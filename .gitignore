@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+extension/node_modules/
+
+# Build outputs
+dist/
+extension/dist/
+build/
+extension/build/
+
+# Vite / TypeScript cache
+*.tsbuildinfo
+extension/node_modules/.tmp/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Chrome extension packaged artifacts
+*.crx
+*.pem
+*.zip
+
+# Local project planning/session files
+ARCHITECTURE.md
+progress-tracker.md
+session-handover.md
+sessions/
