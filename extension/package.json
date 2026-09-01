@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check:shared": "tsx scripts/check-shared-lib.ts"
+    "check:shared": "tsx scripts/check-shared-lib.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "lucide-react": "^1.38.0",
@@ -31,6 +33,7 @@
     "tsx": "^4.23.13",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.67.0",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }
