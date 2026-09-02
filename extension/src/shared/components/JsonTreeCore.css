@@ -1,0 +1,136 @@
+.json-tree-core {
+  --json-tree-font:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  --json-tree-bg: #101418;
+  --json-tree-row-hover: #1a2027;
+  --json-tree-text: #d6dde5;
+  --json-tree-muted: #7d8996;
+  --json-tree-key: #8ecbff;
+  --json-tree-string: #9be28f;
+  --json-tree-number: #f6c177;
+  --json-tree-boolean: #c4a7ff;
+  --json-tree-null: #ef8f8f;
+  --json-tree-border: #29313a;
+
+  min-height: 100%;
+  background: var(--json-tree-bg);
+  color: var(--json-tree-text);
+  font-family: var(--json-tree-font);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.json-tree-node {
+  min-width: max-content;
+}
+
+.json-tree-row {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  padding-left: calc(var(--depth) * 18px);
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+.json-tree-row:hover {
+  background: var(--json-tree-row-hover);
+}
+
+.json-tree-toggle,
+.json-tree-action,
+.json-tree-container-label {
+  color: inherit;
+  font: inherit;
+}
+
+.json-tree-toggle {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  border: 0;
+  background: transparent;
+  color: var(--json-tree-muted);
+  cursor: pointer;
+}
+
+.json-tree-toggle.is-hidden {
+  visibility: hidden;
+}
+
+.json-tree-key {
+  color: var(--json-tree-key);
+}
+
+.json-tree-colon {
+  margin: 0 6px 0 2px;
+  color: var(--json-tree-muted);
+}
+
+.json-tree-container-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.json-tree-type {
+  color: var(--json-tree-text);
+}
+
+.json-tree-summary {
+  color: var(--json-tree-muted);
+}
+
+.json-tree-value.is-string {
+  color: var(--json-tree-string);
+}
+
+.json-tree-value.is-number {
+  color: var(--json-tree-number);
+}
+
+.json-tree-value.is-boolean {
+  color: var(--json-tree-boolean);
+}
+
+.json-tree-value.is-null {
+  color: var(--json-tree-null);
+}
+
+.json-tree-actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 10px;
+  opacity: 0;
+}
+
+.json-tree-row:hover .json-tree-actions,
+.json-tree-row:focus-within .json-tree-actions {
+  opacity: 1;
+}
+
+.json-tree-action {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--json-tree-muted);
+  cursor: pointer;
+}
+
+.json-tree-action:hover {
+  border-color: var(--json-tree-border);
+  color: var(--json-tree-text);
+}
