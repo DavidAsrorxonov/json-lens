@@ -29,7 +29,7 @@ const sampleData: JsonValue = {
   },
 };
 
-function Panel() {
+export function Panel() {
   return (
     <main style={{ minHeight: "100vh", margin: 0 }}>
       <JsonTreeCore

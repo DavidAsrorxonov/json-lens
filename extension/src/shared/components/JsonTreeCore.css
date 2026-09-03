@@ -81,12 +81,24 @@
   padding: 0;
 }
 
+.json-tree-container-label:disabled {
+  cursor: default;
+}
+
 .json-tree-type {
   color: var(--json-tree-text);
 }
 
-.json-tree-summary {
+.json-tree-summary,
+.json-tree-empty,
+.json-tree-limit,
+.json-tree-truncation {
   color: var(--json-tree-muted);
+}
+
+.json-tree-empty,
+.json-tree-limit {
+  margin-left: 8px;
 }
 
 .json-tree-value.is-string {

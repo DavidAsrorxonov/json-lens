@@ -1,14 +1,16 @@
-import { ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Route } from "lucide-react";
 import { useMemo, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import type { JsonPathSegment, JsonValue } from "../lib";
-import { formatJsonPath, isJsonContainer } from "../lib";
+import { formatJsonPath, isJsonContainer, PAYLOAD_LIMITS } from "../lib";
 import "./JsonTreeCore.css";
 
 export type JsonTreeCoreProps = {
   data: JsonValue;
   rootName?: string;
   defaultExpandedDepth?: number;
+  maxDepth?: number;
+  previewStringLength?: number;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
 };
@@ -19,6 +21,8 @@ type TreeNodeProps = {
   pathSegments: JsonPathSegment[];
   depth: number;
   defaultExpandedDepth: number;
+  maxDepth: number;
+  previewStringLength: number;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
 };
@@ -48,12 +52,42 @@ function getContainerSummary(value: JsonValue): string {
   return "";
 }
 
-function formatPrimitive(value: JsonValue): string {
+function getNodeLabel(nodeKey: string | number | null): string {
+  return nodeKey === null ? "root" : String(nodeKey);
+}
+
+function formatNodeKey(nodeKey: string | number): string {
+  return typeof nodeKey === "number" ? String(nodeKey) : JSON.stringify(nodeKey);
+}
+
+function formatPrimitive(
+  value: JsonValue,
+  previewStringLength: number,
+): {
+  text: string;
+  isTruncated: boolean;
+  hiddenCharacterCount: number;
+} {
   if (typeof value === "string") {
-    return JSON.stringify(value);
+    const isTruncated = value.length > previewStringLength;
+    const visibleValue = isTruncated
+      ? `${value.slice(0, previewStringLength)}...`
+      : value;
+
+    return {
+      text: JSON.stringify(visibleValue),
+      isTruncated,
+      hiddenCharacterCount: isTruncated
+        ? value.length - previewStringLength
+        : 0,
+    };
   }
 
-  return String(value);
+  return {
+    text: String(value),
+    isTruncated: false,
+    hiddenCharacterCount: 0,
+  };
 }
 
 function TreeNode({
@@ -62,6 +96,8 @@ function TreeNode({
   pathSegments,
   depth,
   defaultExpandedDepth,
+  maxDepth,
+  previewStringLength,
   onCopyPath,
   onCopyValue,
 }: TreeNodeProps) {
@@ -69,6 +105,7 @@ function TreeNode({
   const [isExpanded, setIsExpanded] = useState(depth < defaultExpandedDepth);
   const path = useMemo(() => formatJsonPath(pathSegments), [pathSegments]);
   const valueType = getValueType(value);
+  const nodeLabel = getNodeLabel(nodeKey);
 
   const rowStyle = {
     "--depth": depth,
@@ -86,45 +123,73 @@ function TreeNode({
     return [];
   }, [value]);
 
+  const isAtMaxDepth = isContainer && depth >= maxDepth;
+  const isEmptyContainer = isContainer && entries.length === 0;
+  const canToggle = isContainer && !isAtMaxDepth && !isEmptyContainer;
+  const primitive = !isContainer
+    ? formatPrimitive(value, previewStringLength)
+    : null;
+  const toggleAction = isExpanded ? "Collapse" : "Expand";
+
   return (
-    <div className="json-tree-node" data-depth={depth}>
-      <div className="json-tree-row" style={rowStyle}>
+    <div className="json-tree-node" data-depth={depth} data-json-path={path}>
+      <div
+        className="json-tree-row"
+        data-testid={`json-tree-row:${path}`}
+        data-json-path={path}
+        data-json-type={valueType}
+        style={rowStyle}
+      >
         <button
-          className={clsx("json-tree-toggle", !isContainer && "is-hidden")}
+          className={clsx("json-tree-toggle", !canToggle && "is-hidden")}
           type="button"
-          aria-label={isExpanded ? "Collapse node" : "Expand node"}
-          aria-expanded={isContainer ? isExpanded : undefined}
+          aria-label={`${toggleAction} ${nodeLabel} at ${path}`}
+          aria-expanded={canToggle ? isExpanded : undefined}
+          aria-hidden={!canToggle}
           onClick={() => setIsExpanded((current) => !current)}
-          disabled={!isContainer}
+          disabled={!canToggle}
+          tabIndex={canToggle ? undefined : -1}
         >
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
 
         {nodeKey !== null && (
           <>
-            <span className="json-tree-key">
-              {JSON.stringify(String(nodeKey))}
-            </span>
+            <span className="json-tree-key">{formatNodeKey(nodeKey)}</span>
             <span className="json-tree-colon">:</span>
           </>
         )}
 
         {isContainer ? (
-          <button
-            className="json-tree-container-label"
-            type="button"
-            onClick={() => setIsExpanded((current) => !current)}
-          >
-            <span className={clsx("json-tree-type", `is-${valueType}`)}>
-              {Array.isArray(value) ? "Array" : "Object"}
-            </span>
-            <span className="json-tree-summary">
-              {getContainerSummary(value)}
-            </span>
-          </button>
+          <>
+            <button
+              className="json-tree-container-label"
+              type="button"
+              aria-label={`Toggle ${nodeLabel} at ${path}`}
+              onClick={() => setIsExpanded((current) => !current)}
+              disabled={!canToggle}
+            >
+              <span className={clsx("json-tree-type", `is-${valueType}`)}>
+                {Array.isArray(value) ? "Array" : "Object"}
+              </span>
+              <span className="json-tree-summary">
+                {getContainerSummary(value)}
+              </span>
+            </button>
+            {isEmptyContainer && <span className="json-tree-empty">empty</span>}
+            {isAtMaxDepth && !isEmptyContainer && (
+              <span className="json-tree-limit">max depth reached</span>
+            )}
+          </>
         ) : (
           <span className={clsx("json-tree-value", `is-${valueType}`)}>
-            {formatPrimitive(value)}
+            {primitive?.text}
+            {primitive?.isTruncated && (
+              <span className="json-tree-truncation">
+                {" "}
+                {primitive.hiddenCharacterCount} more characters
+              </span>
+            )}
           </span>
         )}
 
@@ -136,7 +201,7 @@ function TreeNode({
             aria-label={`Copy path ${path}`}
             onClick={() => onCopyPath?.(path)}
           >
-            <Copy size={13} />
+            <Route size={13} />
           </button>
           <button
             className="json-tree-action"
@@ -150,7 +215,7 @@ function TreeNode({
         </div>
       </div>
 
-      {isContainer && isExpanded && (
+      {isContainer && canToggle && isExpanded && (
         <div className="json-tree-children">
           {entries.map(([childKey, childValue]) => (
             <TreeNode
@@ -160,6 +225,8 @@ function TreeNode({
               pathSegments={[...pathSegments, childKey]}
               depth={depth + 1}
               defaultExpandedDepth={defaultExpandedDepth}
+              maxDepth={maxDepth}
+              previewStringLength={previewStringLength}
               onCopyPath={onCopyPath}
               onCopyValue={onCopyValue}
             />
@@ -174,6 +241,8 @@ export function JsonTreeCore({
   data,
   rootName = "root",
   defaultExpandedDepth = 1,
+  maxDepth = PAYLOAD_LIMITS.maxDepth,
+  previewStringLength = PAYLOAD_LIMITS.previewStringLength,
   onCopyPath,
   onCopyValue,
 }: JsonTreeCoreProps) {
@@ -185,6 +254,8 @@ export function JsonTreeCore({
         pathSegments={[]}
         depth={0}
         defaultExpandedDepth={defaultExpandedDepth}
+        maxDepth={maxDepth}
+        previewStringLength={previewStringLength}
         onCopyPath={onCopyPath}
         onCopyValue={onCopyValue}
       />

@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-function Popup() {
+export function Popup() {
   return <main>JSON Lens</main>;
 }
 

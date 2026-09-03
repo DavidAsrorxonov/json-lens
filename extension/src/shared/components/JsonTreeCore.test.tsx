@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JsonTreeCore } from "./JsonTreeCore";
@@ -26,9 +26,13 @@ describe("JsonTreeCore", () => {
   it("renders the root container", () => {
     render(<JsonTreeCore data={sampleData} rootName="response" />);
 
-    expect(screen.getByText('"response"')).toBeInTheDocument();
-    expect(screen.getAllByText("Object").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("1 key").length).toBeGreaterThan(0);
+    const rootRow = screen.getByTestId("json-tree-row:$");
+
+    expect(within(rootRow).getByText('"response"')).toBeInTheDocument();
+    expect(within(rootRow).getByText("Object")).toBeInTheDocument();
+    expect(within(rootRow).getByText("1 key")).toBeInTheDocument();
+    expect(rootRow).toHaveAttribute("data-json-path", "$");
+    expect(rootRow).toHaveAttribute("data-json-type", "object");
   });
 
   it("renders nested values when expanded by default depth", () => {
@@ -60,19 +64,19 @@ describe("JsonTreeCore", () => {
 
     expect(screen.getByText('"data"')).toBeInTheDocument();
 
-    const collapseButtons = screen.getAllByRole("button", {
-      name: "Collapse node",
-    });
-
-    await user.click(collapseButtons[0]);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Collapse response at $",
+      }),
+    );
 
     expect(screen.queryByText('"data"')).not.toBeInTheDocument();
 
-    const expandButtons = screen.getAllByRole("button", {
-      name: "Expand node",
-    });
-
-    await user.click(expandButtons[0]);
+    await user.click(
+      screen.getByRole("button", {
+        name: "Expand response at $",
+      }),
+    );
 
     expect(screen.getByText('"data"')).toBeInTheDocument();
   });
@@ -119,5 +123,115 @@ describe("JsonTreeCore", () => {
     );
 
     expect(onCopyValue).toHaveBeenCalledWith(1, "$.data.items[0].id");
+  });
+
+  it("renders empty objects and arrays without expandable toggles", () => {
+    render(
+      <JsonTreeCore
+        data={{ emptyObject: {}, emptyArray: [] }}
+        rootName="response"
+        defaultExpandedDepth={2}
+      />,
+    );
+
+    const emptyObjectRow = screen.getByTestId("json-tree-row:$.emptyObject");
+    const emptyArrayRow = screen.getByTestId("json-tree-row:$.emptyArray");
+
+    expect(within(emptyObjectRow).getByText("0 keys")).toBeInTheDocument();
+    expect(within(emptyObjectRow).getByText("empty")).toBeInTheDocument();
+    expect(emptyObjectRow.querySelector(".json-tree-toggle")).toBeDisabled();
+
+    expect(within(emptyArrayRow).getByText("0 items")).toBeInTheDocument();
+    expect(within(emptyArrayRow).getByText("empty")).toBeInTheDocument();
+  });
+
+  it("renders array indexes as numeric labels", () => {
+    render(
+      <JsonTreeCore
+        data={["first"]}
+        rootName="response"
+        defaultExpandedDepth={2}
+      />,
+    );
+
+    const itemRow = screen.getByTestId("json-tree-row:$[0]");
+
+    expect(within(itemRow).getByText("0")).toBeInTheDocument();
+    expect(within(itemRow).getByText('"first"')).toBeInTheDocument();
+    expect(itemRow).toHaveAttribute("data-json-type", "string");
+  });
+
+  it("supports paths for object keys that require quoting", async () => {
+    const user = userEvent.setup();
+    const onCopyPath = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={{ "user-email": "a@example.com" }}
+        rootName="response"
+        defaultExpandedDepth={2}
+        onCopyPath={onCopyPath}
+      />,
+    );
+
+    const weirdKeyRow = screen.getByTestId('json-tree-row:$["user-email"]');
+
+    expect(within(weirdKeyRow).getByText('"user-email"')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: 'Copy path $["user-email"]',
+      }),
+    );
+
+    expect(onCopyPath).toHaveBeenCalledWith('$["user-email"]');
+  });
+
+  it("previews long strings without changing copied values", async () => {
+    const user = userEvent.setup();
+    const onCopyValue = vi.fn();
+    const longValue = "abcdefghij";
+
+    render(
+      <JsonTreeCore
+        data={{ token: longValue }}
+        rootName="response"
+        defaultExpandedDepth={2}
+        previewStringLength={4}
+        onCopyValue={onCopyValue}
+      />,
+    );
+
+    const tokenRow = screen.getByTestId("json-tree-row:$.token");
+
+    expect(within(tokenRow).getByText('"abcd..."')).toBeInTheDocument();
+    expect(
+      within(tokenRow).getByText("6 more characters"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Copy value $.token",
+      }),
+    );
+
+    expect(onCopyValue).toHaveBeenCalledWith(longValue, "$.token");
+  });
+
+  it("stops rendering children at the max depth", () => {
+    render(
+      <JsonTreeCore
+        data={{ level1: { level2: { level3: true } } }}
+        rootName="response"
+        defaultExpandedDepth={5}
+        maxDepth={2}
+      />,
+    );
+
+    const level2Row = screen.getByTestId("json-tree-row:$.level1.level2");
+
+    expect(within(level2Row).getByText("max depth reached")).toBeInTheDocument();
+    expect(screen.queryByText('"level3"')).not.toBeInTheDocument();
+    expect(level2Row.querySelector(".json-tree-toggle")).toBeDisabled();
   });
 });
