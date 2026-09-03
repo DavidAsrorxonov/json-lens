@@ -234,4 +234,110 @@ describe("JsonTreeCore", () => {
     expect(screen.queryByText('"level3"')).not.toBeInTheDocument();
     expect(level2Row.querySelector(".json-tree-toggle")).toBeDisabled();
   });
+
+  it("marks rows that match object keys", () => {
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={0}
+        searchQuery="email"
+      />,
+    );
+
+    const emailRow = screen.getByTestId("json-tree-row:$.data.items[0].email");
+
+    expect(emailRow).toHaveClass("is-search-match");
+    expect(emailRow).toHaveAttribute("data-search-match", "true");
+  });
+
+  it("marks rows that match primitive values", () => {
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={0}
+        searchQuery="a@example.com"
+      />,
+    );
+
+    const emailRow = screen.getByTestId("json-tree-row:$.data.items[0].email");
+
+    expect(emailRow).toHaveClass("is-search-match");
+    expect(within(emailRow).getByText('"a@example.com"')).toBeInTheDocument();
+  });
+
+  it("marks rows that match JSON paths", () => {
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={0}
+        searchQuery="items[0].active"
+      />,
+    );
+
+    const activeRow = screen.getByTestId(
+      "json-tree-row:$.data.items[0].active",
+    );
+
+    expect(activeRow).toHaveClass("is-search-match");
+    expect(within(activeRow).getByText("true")).toBeInTheDocument();
+  });
+
+  it("auto-expands collapsed ancestors while searching", () => {
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={0}
+        searchQuery="profile"
+      />,
+    );
+
+    const rootRow = screen.getByTestId("json-tree-row:$");
+    const dataRow = screen.getByTestId("json-tree-row:$.data");
+    const itemRow = screen.getByTestId("json-tree-row:$.data.items[0]");
+    const profileRow = screen.getByTestId(
+      "json-tree-row:$.data.items[0].profile",
+    );
+
+    expect(rootRow).toHaveClass("has-search-match");
+    expect(dataRow).toHaveClass("has-search-match");
+    expect(itemRow).toHaveClass("has-search-match");
+    expect(profileRow).toHaveClass("is-search-match");
+  });
+
+  it("matches search queries case-insensitively", () => {
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={0}
+        searchQuery="A@EXAMPLE.COM"
+      />,
+    );
+
+    expect(
+      screen.getByTestId("json-tree-row:$.data.items[0].email"),
+    ).toHaveClass("is-search-match");
+  });
+
+  it("does not reveal matching descendants beyond max depth", () => {
+    render(
+      <JsonTreeCore
+        data={{ level1: { level2: { secret: "hidden" } } }}
+        rootName="response"
+        defaultExpandedDepth={3}
+        maxDepth={2}
+        searchQuery="secret"
+      />,
+    );
+
+    const level2Row = screen.getByTestId("json-tree-row:$.level1.level2");
+
+    expect(level2Row).not.toHaveClass("has-search-match");
+    expect(within(level2Row).getByText("max depth reached")).toBeInTheDocument();
+    expect(screen.queryByText('"secret"')).not.toBeInTheDocument();
+  });
 });

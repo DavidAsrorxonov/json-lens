@@ -12,6 +12,9 @@
   --json-tree-boolean: #c4a7ff;
   --json-tree-null: #ef8f8f;
   --json-tree-border: #29313a;
+  --json-tree-search-bg: #3a2f12;
+  --json-tree-search-border: #d6a231;
+  --json-tree-search-ancestor-bg: #192636;
 
   min-height: 100%;
   background: var(--json-tree-bg);
@@ -36,6 +39,19 @@
 
 .json-tree-row:hover {
   background: var(--json-tree-row-hover);
+}
+
+.json-tree-row.has-search-match {
+  background: var(--json-tree-search-ancestor-bg);
+}
+
+.json-tree-row.is-search-match {
+  background: var(--json-tree-search-bg);
+  box-shadow: inset 3px 0 0 var(--json-tree-search-border);
+}
+
+.json-tree-row.is-search-match:hover {
+  background: var(--json-tree-search-bg);
 }
 
 .json-tree-toggle,

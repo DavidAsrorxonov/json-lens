@@ -11,6 +11,7 @@ export type JsonTreeCoreProps = {
   defaultExpandedDepth?: number;
   maxDepth?: number;
   previewStringLength?: number;
+  searchQuery?: string;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
 };
@@ -23,8 +24,14 @@ type TreeNodeProps = {
   defaultExpandedDepth: number;
   maxDepth: number;
   previewStringLength: number;
+  normalizedSearchQuery: string;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
+};
+
+type SearchMetadata = {
+  isMatch: boolean;
+  hasMatchingDescendant: boolean;
 };
 
 function getValueType(value: JsonValue): string {
@@ -90,6 +97,77 @@ function formatPrimitive(
   };
 }
 
+function getPrimitiveSearchText(value: JsonValue): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!isJsonContainer(value)) {
+    return String(value);
+  }
+
+  return "";
+}
+
+function getSearchMetadata({
+  nodeKey,
+  value,
+  pathSegments,
+  depth,
+  maxDepth,
+  normalizedSearchQuery,
+}: {
+  nodeKey: string | number | null;
+  value: JsonValue;
+  pathSegments: JsonPathSegment[];
+  depth: number;
+  maxDepth: number;
+  normalizedSearchQuery: string;
+}): SearchMetadata {
+  if (normalizedSearchQuery.length === 0) {
+    return {
+      isMatch: false,
+      hasMatchingDescendant: false,
+    };
+  }
+
+  const path = formatJsonPath(pathSegments);
+  const keyText = nodeKey === null ? "" : String(nodeKey);
+  const valueText = getPrimitiveSearchText(value);
+  const isMatch = [keyText, path, valueText].some((part) =>
+    part.toLowerCase().includes(normalizedSearchQuery),
+  );
+
+  if (!isJsonContainer(value) || depth >= maxDepth) {
+    return {
+      isMatch,
+      hasMatchingDescendant: false,
+    };
+  }
+
+  const entries = Array.isArray(value)
+    ? value.map((item, index) => [index, item] as const)
+    : Object.entries(value);
+
+  const hasMatchingDescendant = entries.some(([childKey, childValue]) => {
+    const childMetadata = getSearchMetadata({
+      nodeKey: childKey,
+      value: childValue,
+      pathSegments: [...pathSegments, childKey],
+      depth: depth + 1,
+      maxDepth,
+      normalizedSearchQuery,
+    });
+
+    return childMetadata.isMatch || childMetadata.hasMatchingDescendant;
+  });
+
+  return {
+    isMatch,
+    hasMatchingDescendant,
+  };
+}
+
 function TreeNode({
   nodeKey,
   value,
@@ -98,6 +176,7 @@ function TreeNode({
   defaultExpandedDepth,
   maxDepth,
   previewStringLength,
+  normalizedSearchQuery,
   onCopyPath,
   onCopyValue,
 }: TreeNodeProps) {
@@ -129,15 +208,40 @@ function TreeNode({
   const primitive = !isContainer
     ? formatPrimitive(value, previewStringLength)
     : null;
-  const toggleAction = isExpanded ? "Collapse" : "Expand";
+  const searchMetadata = useMemo(
+    () =>
+      getSearchMetadata({
+        nodeKey,
+        value,
+        pathSegments,
+        depth,
+        maxDepth,
+        normalizedSearchQuery,
+      }),
+    [nodeKey, value, pathSegments, depth, maxDepth, normalizedSearchQuery],
+  );
+  const isSearchActive = normalizedSearchQuery.length > 0;
+  const effectiveExpanded =
+    canToggle &&
+    (isExpanded ||
+      (isSearchActive && searchMetadata.hasMatchingDescendant));
+  const toggleAction = effectiveExpanded ? "Collapse" : "Expand";
 
   return (
     <div className="json-tree-node" data-depth={depth} data-json-path={path}>
       <div
-        className="json-tree-row"
+        className={clsx(
+          "json-tree-row",
+          searchMetadata.isMatch && "is-search-match",
+          searchMetadata.hasMatchingDescendant && "has-search-match",
+        )}
         data-testid={`json-tree-row:${path}`}
         data-json-path={path}
         data-json-type={valueType}
+        data-search-match={searchMetadata.isMatch ? "true" : undefined}
+        data-has-search-match={
+          searchMetadata.hasMatchingDescendant ? "true" : undefined
+        }
         style={rowStyle}
       >
         <button
@@ -150,7 +254,11 @@ function TreeNode({
           disabled={!canToggle}
           tabIndex={canToggle ? undefined : -1}
         >
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {effectiveExpanded ? (
+            <ChevronDown size={14} />
+          ) : (
+            <ChevronRight size={14} />
+          )}
         </button>
 
         {nodeKey !== null && (
@@ -215,7 +323,7 @@ function TreeNode({
         </div>
       </div>
 
-      {isContainer && canToggle && isExpanded && (
+      {isContainer && canToggle && effectiveExpanded && (
         <div className="json-tree-children">
           {entries.map(([childKey, childValue]) => (
             <TreeNode
@@ -227,6 +335,7 @@ function TreeNode({
               defaultExpandedDepth={defaultExpandedDepth}
               maxDepth={maxDepth}
               previewStringLength={previewStringLength}
+              normalizedSearchQuery={normalizedSearchQuery}
               onCopyPath={onCopyPath}
               onCopyValue={onCopyValue}
             />
@@ -243,9 +352,12 @@ export function JsonTreeCore({
   defaultExpandedDepth = 1,
   maxDepth = PAYLOAD_LIMITS.maxDepth,
   previewStringLength = PAYLOAD_LIMITS.previewStringLength,
+  searchQuery = "",
   onCopyPath,
   onCopyValue,
 }: JsonTreeCoreProps) {
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
   return (
     <section className="json-tree-core" aria-label="JSON tree">
       <TreeNode
@@ -256,6 +368,7 @@ export function JsonTreeCore({
         defaultExpandedDepth={defaultExpandedDepth}
         maxDepth={maxDepth}
         previewStringLength={previewStringLength}
+        normalizedSearchQuery={normalizedSearchQuery}
         onCopyPath={onCopyPath}
         onCopyValue={onCopyValue}
       />
