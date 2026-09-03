@@ -9,8 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "check:shared": "tsx scripts/check-shared-lib.ts",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -22,6 +22,9 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",
     "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/chrome": "^0.2.7",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
@@ -31,6 +34,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.4",
     "globals": "^17.11.0",
+    "jsdom": "^29.1.1",
     "tsx": "^4.23.13",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.67.0",

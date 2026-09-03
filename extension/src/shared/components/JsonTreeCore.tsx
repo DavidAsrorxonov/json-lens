@@ -132,8 +132,8 @@ function TreeNode({
           <button
             className="json-tree-action"
             type="button"
-            title="Copy path"
-            aria-label="Copy path"
+            title={`Copy path ${path}`}
+            aria-label={`Copy path ${path}`}
             onClick={() => onCopyPath?.(path)}
           >
             <Copy size={13} />
@@ -141,8 +141,8 @@ function TreeNode({
           <button
             className="json-tree-action"
             type="button"
-            title="Copy value"
-            aria-label="Copy value"
+            title={`Copy value ${path}`}
+            aria-label={`Copy value ${path}`}
             onClick={() => onCopyValue?.(value, path)}
           >
             <Copy size={13} />
