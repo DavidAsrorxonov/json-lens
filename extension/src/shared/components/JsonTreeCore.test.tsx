@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JsonTreeCore } from "./JsonTreeCore";
@@ -339,5 +345,132 @@ describe("JsonTreeCore", () => {
     expect(level2Row).not.toHaveClass("has-search-match");
     expect(within(level2Row).getByText("max depth reached")).toBeInTheDocument();
     expect(screen.queryByText('"secret"')).not.toBeInTheDocument();
+  });
+
+  it("reports empty matches when search is empty", async () => {
+    const onSearchMatchesChange = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        onSearchMatchesChange={onSearchMatchesChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onSearchMatchesChange).toHaveBeenLastCalledWith([]);
+    });
+  });
+
+  it("reports key and value matches in tree order", async () => {
+    const onSearchMatchesChange = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={{ matchKey: false, plain: "match" }}
+        rootName="response"
+        searchQuery="match"
+        onSearchMatchesChange={onSearchMatchesChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onSearchMatchesChange).toHaveBeenLastCalledWith([
+        { path: "$.matchKey", type: "key" },
+        { path: "$.plain", type: "value" },
+      ]);
+    });
+  });
+
+  it("reports path matches", async () => {
+    const onSearchMatchesChange = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={{ group: { child: false } }}
+        rootName="response"
+        searchQuery="group.child"
+        onSearchMatchesChange={onSearchMatchesChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onSearchMatchesChange).toHaveBeenLastCalledWith([
+        { path: "$.group.child", type: "path" },
+      ]);
+    });
+  });
+
+  it("reports one match per row using key, value, then path priority", async () => {
+    const onSearchMatchesChange = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={{ id: "id" }}
+        rootName="response"
+        searchQuery="id"
+        onSearchMatchesChange={onSearchMatchesChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onSearchMatchesChange).toHaveBeenLastCalledWith([
+        { path: "$.id", type: "key" },
+      ]);
+    });
+  });
+
+  it("reports only reachable matches within max depth", async () => {
+    const onSearchMatchesChange = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={{ level1: { level2: { secret: "hidden" } }, visible: "hidden" }}
+        rootName="response"
+        maxDepth={2}
+        searchQuery="hidden"
+        onSearchMatchesChange={onSearchMatchesChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onSearchMatchesChange).toHaveBeenLastCalledWith([
+        { path: "$.visible", type: "value" },
+      ]);
+    });
+  });
+
+  it("marks the active search match", () => {
+    render(
+      <JsonTreeCore
+        data={{ first: "needle", second: "needle" }}
+        rootName="response"
+        defaultExpandedDepth={2}
+        searchQuery="needle"
+        activeMatchIndex={1}
+      />,
+    );
+
+    const firstRow = screen.getByTestId("json-tree-row:$.first");
+    const secondRow = screen.getByTestId("json-tree-row:$.second");
+
+    expect(firstRow).not.toHaveClass("is-active-search-match");
+    expect(secondRow).toHaveClass("is-active-search-match");
+    expect(secondRow).toHaveAttribute("data-active-search-match", "true");
+  });
+
+  it("does not mark an active search match for invalid active indexes", () => {
+    const { container } = render(
+      <JsonTreeCore
+        data={{ first: "needle" }}
+        rootName="response"
+        defaultExpandedDepth={2}
+        searchQuery="needle"
+        activeMatchIndex={4}
+      />,
+    );
+
+    expect(container.querySelector(".is-active-search-match")).toBeNull();
   });
 });

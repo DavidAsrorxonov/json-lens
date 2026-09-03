@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Copy, Route } from "lucide-react";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import type { JsonPathSegment, JsonValue } from "../lib";
 import { formatJsonPath, isJsonContainer, PAYLOAD_LIMITS } from "../lib";
@@ -12,8 +12,19 @@ export type JsonTreeCoreProps = {
   maxDepth?: number;
   previewStringLength?: number;
   searchQuery?: string;
+  activeMatchIndex?: number;
+  onSearchMatchesChange?: (matches: JsonTreeSearchMatch[]) => void;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
+};
+
+export type JsonTreeSearchMatch = {
+  path: string;
+  type: "key" | "value" | "path";
+};
+
+type CollectedSearchMatch = JsonTreeSearchMatch & {
+  pathSegments: JsonPathSegment[];
 };
 
 type TreeNodeProps = {
@@ -24,14 +35,11 @@ type TreeNodeProps = {
   defaultExpandedDepth: number;
   maxDepth: number;
   previewStringLength: number;
-  normalizedSearchQuery: string;
+  searchMatchPaths: ReadonlySet<string>;
+  searchAncestorPaths: ReadonlySet<string>;
+  activeMatchPath: string | null;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
-};
-
-type SearchMetadata = {
-  isMatch: boolean;
-  hasMatchingDescendant: boolean;
 };
 
 function getValueType(value: JsonValue): string {
@@ -97,6 +105,20 @@ function formatPrimitive(
   };
 }
 
+function getEntries(
+  value: JsonValue,
+): readonly (readonly [string | number, JsonValue])[] {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => [index, item] as const);
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.entries(value);
+  }
+
+  return [];
+}
+
 function getPrimitiveSearchText(value: JsonValue): string {
   if (typeof value === "string") {
     return value;
@@ -109,7 +131,41 @@ function getPrimitiveSearchText(value: JsonValue): string {
   return "";
 }
 
-function getSearchMetadata({
+function getNodeMatchType({
+  nodeKey,
+  value,
+  pathSegments,
+  normalizedSearchQuery,
+}: {
+  nodeKey: string | number | null;
+  value: JsonValue;
+  pathSegments: JsonPathSegment[];
+  normalizedSearchQuery: string;
+}): JsonTreeSearchMatch["type"] | null {
+  if (normalizedSearchQuery.length === 0) {
+    return null;
+  }
+
+  const path = formatJsonPath(pathSegments);
+  const keyText = nodeKey === null ? "" : String(nodeKey);
+  const valueText = getPrimitiveSearchText(value);
+
+  if (keyText.toLowerCase().includes(normalizedSearchQuery)) {
+    return "key";
+  }
+
+  if (valueText.toLowerCase().includes(normalizedSearchQuery)) {
+    return "value";
+  }
+
+  if (path.toLowerCase().includes(normalizedSearchQuery)) {
+    return "path";
+  }
+
+  return null;
+}
+
+function collectSearchMatches({
   nodeKey,
   value,
   pathSegments,
@@ -123,49 +179,58 @@ function getSearchMetadata({
   depth: number;
   maxDepth: number;
   normalizedSearchQuery: string;
-}): SearchMetadata {
+}): CollectedSearchMatch[] {
   if (normalizedSearchQuery.length === 0) {
-    return {
-      isMatch: false,
-      hasMatchingDescendant: false,
-    };
+    return [];
   }
 
   const path = formatJsonPath(pathSegments);
-  const keyText = nodeKey === null ? "" : String(nodeKey);
-  const valueText = getPrimitiveSearchText(value);
-  const isMatch = [keyText, path, valueText].some((part) =>
-    part.toLowerCase().includes(normalizedSearchQuery),
-  );
+  const matchType = getNodeMatchType({
+    nodeKey,
+    value,
+    pathSegments,
+    normalizedSearchQuery,
+  });
+  const matches: CollectedSearchMatch[] = matchType
+    ? [{ path, pathSegments, type: matchType }]
+    : [];
 
   if (!isJsonContainer(value) || depth >= maxDepth) {
-    return {
-      isMatch,
-      hasMatchingDescendant: false,
-    };
+    return matches;
   }
 
-  const entries = Array.isArray(value)
-    ? value.map((item, index) => [index, item] as const)
-    : Object.entries(value);
+  for (const [childKey, childValue] of getEntries(value)) {
+    matches.push(
+      ...collectSearchMatches({
+        nodeKey: childKey,
+        value: childValue,
+        pathSegments: [...pathSegments, childKey],
+        depth: depth + 1,
+        maxDepth,
+        normalizedSearchQuery,
+      }),
+    );
+  }
 
-  const hasMatchingDescendant = entries.some(([childKey, childValue]) => {
-    const childMetadata = getSearchMetadata({
-      nodeKey: childKey,
-      value: childValue,
-      pathSegments: [...pathSegments, childKey],
-      depth: depth + 1,
-      maxDepth,
-      normalizedSearchQuery,
-    });
+  return matches;
+}
 
-    return childMetadata.isMatch || childMetadata.hasMatchingDescendant;
-  });
+function collectAncestorPaths(
+  matches: readonly CollectedSearchMatch[],
+): ReadonlySet<string> {
+  const ancestorPaths = new Set<string>();
 
-  return {
-    isMatch,
-    hasMatchingDescendant,
-  };
+  for (const match of matches) {
+    for (
+      let segmentCount = 0;
+      segmentCount < match.pathSegments.length;
+      segmentCount += 1
+    ) {
+      ancestorPaths.add(formatJsonPath(match.pathSegments.slice(0, segmentCount)));
+    }
+  }
+
+  return ancestorPaths;
 }
 
 function TreeNode({
@@ -176,7 +241,9 @@ function TreeNode({
   defaultExpandedDepth,
   maxDepth,
   previewStringLength,
-  normalizedSearchQuery,
+  searchMatchPaths,
+  searchAncestorPaths,
+  activeMatchPath,
   onCopyPath,
   onCopyValue,
 }: TreeNodeProps) {
@@ -190,17 +257,7 @@ function TreeNode({
     "--depth": depth,
   } as CSSProperties;
 
-  const entries = useMemo(() => {
-    if (Array.isArray(value)) {
-      return value.map((item, index) => [index, item] as const);
-    }
-
-    if (typeof value === "object" && value !== null) {
-      return Object.entries(value);
-    }
-
-    return [];
-  }, [value]);
+  const entries = useMemo(() => getEntries(value), [value]);
 
   const isAtMaxDepth = isContainer && depth >= maxDepth;
   const isEmptyContainer = isContainer && entries.length === 0;
@@ -208,23 +265,11 @@ function TreeNode({
   const primitive = !isContainer
     ? formatPrimitive(value, previewStringLength)
     : null;
-  const searchMetadata = useMemo(
-    () =>
-      getSearchMetadata({
-        nodeKey,
-        value,
-        pathSegments,
-        depth,
-        maxDepth,
-        normalizedSearchQuery,
-      }),
-    [nodeKey, value, pathSegments, depth, maxDepth, normalizedSearchQuery],
-  );
-  const isSearchActive = normalizedSearchQuery.length > 0;
+  const isSearchMatch = searchMatchPaths.has(path);
+  const hasSearchMatch = searchAncestorPaths.has(path);
+  const isActiveSearchMatch = activeMatchPath === path;
   const effectiveExpanded =
-    canToggle &&
-    (isExpanded ||
-      (isSearchActive && searchMetadata.hasMatchingDescendant));
+    canToggle && (isExpanded || hasSearchMatch);
   const toggleAction = effectiveExpanded ? "Collapse" : "Expand";
 
   return (
@@ -232,16 +277,16 @@ function TreeNode({
       <div
         className={clsx(
           "json-tree-row",
-          searchMetadata.isMatch && "is-search-match",
-          searchMetadata.hasMatchingDescendant && "has-search-match",
+          isSearchMatch && "is-search-match",
+          hasSearchMatch && "has-search-match",
+          isActiveSearchMatch && "is-active-search-match",
         )}
         data-testid={`json-tree-row:${path}`}
         data-json-path={path}
         data-json-type={valueType}
-        data-search-match={searchMetadata.isMatch ? "true" : undefined}
-        data-has-search-match={
-          searchMetadata.hasMatchingDescendant ? "true" : undefined
-        }
+        data-search-match={isSearchMatch ? "true" : undefined}
+        data-has-search-match={hasSearchMatch ? "true" : undefined}
+        data-active-search-match={isActiveSearchMatch ? "true" : undefined}
         style={rowStyle}
       >
         <button
@@ -335,7 +380,9 @@ function TreeNode({
               defaultExpandedDepth={defaultExpandedDepth}
               maxDepth={maxDepth}
               previewStringLength={previewStringLength}
-              normalizedSearchQuery={normalizedSearchQuery}
+              searchMatchPaths={searchMatchPaths}
+              searchAncestorPaths={searchAncestorPaths}
+              activeMatchPath={activeMatchPath}
               onCopyPath={onCopyPath}
               onCopyValue={onCopyValue}
             />
@@ -353,10 +400,48 @@ export function JsonTreeCore({
   maxDepth = PAYLOAD_LIMITS.maxDepth,
   previewStringLength = PAYLOAD_LIMITS.previewStringLength,
   searchQuery = "",
+  activeMatchIndex = -1,
+  onSearchMatchesChange,
   onCopyPath,
   onCopyValue,
 }: JsonTreeCoreProps) {
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const collectedSearchMatches = useMemo(
+    () =>
+      collectSearchMatches({
+        nodeKey: rootName,
+        value: data,
+        pathSegments: [],
+        depth: 0,
+        maxDepth,
+        normalizedSearchQuery,
+      }),
+    [data, rootName, maxDepth, normalizedSearchQuery],
+  );
+  const searchMatches = useMemo<JsonTreeSearchMatch[]>(
+    () =>
+      collectedSearchMatches.map(({ path, type }) => ({
+        path,
+        type,
+      })),
+    [collectedSearchMatches],
+  );
+  const searchMatchPaths = useMemo(
+    () => new Set(collectedSearchMatches.map((match) => match.path)),
+    [collectedSearchMatches],
+  );
+  const searchAncestorPaths = useMemo(
+    () => collectAncestorPaths(collectedSearchMatches),
+    [collectedSearchMatches],
+  );
+  const activeMatchPath =
+    activeMatchIndex >= 0 && activeMatchIndex < searchMatches.length
+      ? searchMatches[activeMatchIndex].path
+      : null;
+
+  useEffect(() => {
+    onSearchMatchesChange?.(searchMatches);
+  }, [onSearchMatchesChange, searchMatches]);
 
   return (
     <section className="json-tree-core" aria-label="JSON tree">
@@ -368,7 +453,9 @@ export function JsonTreeCore({
         defaultExpandedDepth={defaultExpandedDepth}
         maxDepth={maxDepth}
         previewStringLength={previewStringLength}
-        normalizedSearchQuery={normalizedSearchQuery}
+        searchMatchPaths={searchMatchPaths}
+        searchAncestorPaths={searchAncestorPaths}
+        activeMatchPath={activeMatchPath}
         onCopyPath={onCopyPath}
         onCopyValue={onCopyValue}
       />
