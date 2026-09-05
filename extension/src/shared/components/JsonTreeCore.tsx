@@ -2,7 +2,13 @@ import { ChevronDown, ChevronRight, Copy, Route } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import type { JsonPathSegment, JsonValue } from "../lib";
-import { formatJsonPath, isJsonContainer, PAYLOAD_LIMITS } from "../lib";
+import {
+  flattenJsonTree,
+  formatJsonPath,
+  isJsonContainer,
+  PAYLOAD_LIMITS,
+  type JsonTreeRow,
+} from "../lib";
 import "./JsonTreeCore.css";
 
 export type JsonTreeCoreProps = {
@@ -27,45 +33,25 @@ type CollectedSearchMatch = JsonTreeSearchMatch & {
   pathSegments: JsonPathSegment[];
 };
 
-type TreeNodeProps = {
-  nodeKey: string | number | null;
-  value: JsonValue;
-  pathSegments: JsonPathSegment[];
-  depth: number;
-  defaultExpandedDepth: number;
-  maxDepth: number;
+type TreeRowProps = {
+  row: JsonTreeRow;
+  isExpanded: boolean;
+  isSearchMatch: boolean;
+  hasSearchMatch: boolean;
+  isActiveSearchMatch: boolean;
   previewStringLength: number;
-  searchMatchPaths: ReadonlySet<string>;
-  searchAncestorPaths: ReadonlySet<string>;
-  activeMatchPath: string | null;
+  onToggle: (path: string) => void;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
 };
 
-function getValueType(value: JsonValue): string {
-  if (value === null) {
-    return "null";
-  }
-
-  if (Array.isArray(value)) {
-    return "array";
-  }
-
-  return typeof value;
-}
-
-function getContainerSummary(value: JsonValue): string {
-  if (Array.isArray(value)) {
-    return `${value.length} ${value.length === 1 ? "item" : "items"}`;
-  }
-
-  if (typeof value === "object" && value !== null) {
-    const count = Object.keys(value).length;
-    return `${count} ${count === 1 ? "key" : "keys"}`;
-  }
-
-  return "";
-}
+type ExpansionState = {
+  data: JsonValue;
+  rootName: string;
+  defaultExpandedDepth: number;
+  maxDepth: number;
+  paths: ReadonlySet<string>;
+};
 
 function getNodeLabel(nodeKey: string | number | null): string {
   return nodeKey === null ? "root" : String(nodeKey);
@@ -215,6 +201,48 @@ function collectSearchMatches({
   return matches;
 }
 
+function collectDefaultExpandedPaths({
+  value,
+  pathSegments,
+  depth,
+  defaultExpandedDepth,
+  maxDepth,
+}: {
+  value: JsonValue;
+  pathSegments: JsonPathSegment[];
+  depth: number;
+  defaultExpandedDepth: number;
+  maxDepth: number;
+}): string[] {
+  if (
+    !isJsonContainer(value) ||
+    depth >= defaultExpandedDepth ||
+    depth >= maxDepth
+  ) {
+    return [];
+  }
+
+  const path = formatJsonPath(pathSegments);
+  const entries = getEntries(value);
+
+  if (entries.length === 0) {
+    return [];
+  }
+
+  return [
+    path,
+    ...entries.flatMap(([childKey, childValue]) =>
+      collectDefaultExpandedPaths({
+        value: childValue,
+        pathSegments: [...pathSegments, childKey],
+        depth: depth + 1,
+        defaultExpandedDepth,
+        maxDepth,
+      }),
+    ),
+  ];
+}
+
 function collectAncestorPaths(
   matches: readonly CollectedSearchMatch[],
 ): ReadonlySet<string> {
@@ -226,54 +254,44 @@ function collectAncestorPaths(
       segmentCount < match.pathSegments.length;
       segmentCount += 1
     ) {
-      ancestorPaths.add(formatJsonPath(match.pathSegments.slice(0, segmentCount)));
+      ancestorPaths.add(
+        formatJsonPath(match.pathSegments.slice(0, segmentCount)),
+      );
     }
   }
 
   return ancestorPaths;
 }
 
-function TreeNode({
-  nodeKey,
-  value,
-  pathSegments,
-  depth,
-  defaultExpandedDepth,
-  maxDepth,
+function TreeRow({
+  row,
+  isExpanded,
+  isSearchMatch,
+  hasSearchMatch,
+  isActiveSearchMatch,
   previewStringLength,
-  searchMatchPaths,
-  searchAncestorPaths,
-  activeMatchPath,
+  onToggle,
   onCopyPath,
   onCopyValue,
-}: TreeNodeProps) {
-  const isContainer = isJsonContainer(value);
-  const [isExpanded, setIsExpanded] = useState(depth < defaultExpandedDepth);
-  const path = useMemo(() => formatJsonPath(pathSegments), [pathSegments]);
-  const valueType = getValueType(value);
-  const nodeLabel = getNodeLabel(nodeKey);
-
+}: TreeRowProps) {
   const rowStyle = {
-    "--depth": depth,
+    "--depth": row.depth,
   } as CSSProperties;
-
-  const entries = useMemo(() => getEntries(value), [value]);
-
-  const isAtMaxDepth = isContainer && depth >= maxDepth;
-  const isEmptyContainer = isContainer && entries.length === 0;
-  const canToggle = isContainer && !isAtMaxDepth && !isEmptyContainer;
-  const primitive = !isContainer
-    ? formatPrimitive(value, previewStringLength)
+  const nodeLabel = getNodeLabel(row.key);
+  const canToggle =
+    row.isContainer && !row.isAtMaxDepth && !row.isEmptyContainer;
+  const primitive = !row.isContainer
+    ? formatPrimitive(row.value, previewStringLength)
     : null;
-  const isSearchMatch = searchMatchPaths.has(path);
-  const hasSearchMatch = searchAncestorPaths.has(path);
-  const isActiveSearchMatch = activeMatchPath === path;
-  const effectiveExpanded =
-    canToggle && (isExpanded || hasSearchMatch);
+  const effectiveExpanded = canToggle && isExpanded;
   const toggleAction = effectiveExpanded ? "Collapse" : "Expand";
 
   return (
-    <div className="json-tree-node" data-depth={depth} data-json-path={path}>
+    <div
+      className="json-tree-node"
+      data-depth={row.depth}
+      data-json-path={row.path}
+    >
       <div
         className={clsx(
           "json-tree-row",
@@ -281,9 +299,9 @@ function TreeNode({
           hasSearchMatch && "has-search-match",
           isActiveSearchMatch && "is-active-search-match",
         )}
-        data-testid={`json-tree-row:${path}`}
-        data-json-path={path}
-        data-json-type={valueType}
+        data-testid={`json-tree-row:${row.path}`}
+        data-json-path={row.path}
+        data-json-type={row.type}
         data-search-match={isSearchMatch ? "true" : undefined}
         data-has-search-match={hasSearchMatch ? "true" : undefined}
         data-active-search-match={isActiveSearchMatch ? "true" : undefined}
@@ -292,10 +310,10 @@ function TreeNode({
         <button
           className={clsx("json-tree-toggle", !canToggle && "is-hidden")}
           type="button"
-          aria-label={`${toggleAction} ${nodeLabel} at ${path}`}
-          aria-expanded={canToggle ? isExpanded : undefined}
+          aria-label={`${toggleAction} ${nodeLabel} at ${row.path}`}
+          aria-expanded={canToggle ? effectiveExpanded : undefined}
           aria-hidden={!canToggle}
-          onClick={() => setIsExpanded((current) => !current)}
+          onClick={() => onToggle(row.path)}
           disabled={!canToggle}
           tabIndex={canToggle ? undefined : -1}
         >
@@ -306,36 +324,36 @@ function TreeNode({
           )}
         </button>
 
-        {nodeKey !== null && (
+        {row.key !== null && (
           <>
-            <span className="json-tree-key">{formatNodeKey(nodeKey)}</span>
+            <span className="json-tree-key">{formatNodeKey(row.key)}</span>
             <span className="json-tree-colon">:</span>
           </>
         )}
 
-        {isContainer ? (
+        {row.isContainer ? (
           <>
             <button
               className="json-tree-container-label"
               type="button"
-              aria-label={`Toggle ${nodeLabel} at ${path}`}
-              onClick={() => setIsExpanded((current) => !current)}
+              aria-label={`Toggle ${nodeLabel} at ${row.path}`}
+              onClick={() => onToggle(row.path)}
               disabled={!canToggle}
             >
-              <span className={clsx("json-tree-type", `is-${valueType}`)}>
-                {Array.isArray(value) ? "Array" : "Object"}
+              <span className={clsx("json-tree-type", `is-${row.type}`)}>
+                {row.type === "array" ? "Array" : "Object"}
               </span>
-              <span className="json-tree-summary">
-                {getContainerSummary(value)}
-              </span>
+              <span className="json-tree-summary">{row.summary}</span>
             </button>
-            {isEmptyContainer && <span className="json-tree-empty">empty</span>}
-            {isAtMaxDepth && !isEmptyContainer && (
+            {row.isEmptyContainer && (
+              <span className="json-tree-empty">empty</span>
+            )}
+            {row.isAtMaxDepth && !row.isEmptyContainer && (
               <span className="json-tree-limit">max depth reached</span>
             )}
           </>
         ) : (
-          <span className={clsx("json-tree-value", `is-${valueType}`)}>
+          <span className={clsx("json-tree-value", `is-${row.type}`)}>
             {primitive?.text}
             {primitive?.isTruncated && (
               <span className="json-tree-truncation">
@@ -350,45 +368,23 @@ function TreeNode({
           <button
             className="json-tree-action"
             type="button"
-            title={`Copy path ${path}`}
-            aria-label={`Copy path ${path}`}
-            onClick={() => onCopyPath?.(path)}
+            title={`Copy path ${row.path}`}
+            aria-label={`Copy path ${row.path}`}
+            onClick={() => onCopyPath?.(row.path)}
           >
             <Route size={13} />
           </button>
           <button
             className="json-tree-action"
             type="button"
-            title={`Copy value ${path}`}
-            aria-label={`Copy value ${path}`}
-            onClick={() => onCopyValue?.(value, path)}
+            title={`Copy value ${row.path}`}
+            aria-label={`Copy value ${row.path}`}
+            onClick={() => onCopyValue?.(row.value, row.path)}
           >
             <Copy size={13} />
           </button>
         </div>
       </div>
-
-      {isContainer && canToggle && effectiveExpanded && (
-        <div className="json-tree-children">
-          {entries.map(([childKey, childValue]) => (
-            <TreeNode
-              key={String(childKey)}
-              nodeKey={childKey}
-              value={childValue}
-              pathSegments={[...pathSegments, childKey]}
-              depth={depth + 1}
-              defaultExpandedDepth={defaultExpandedDepth}
-              maxDepth={maxDepth}
-              previewStringLength={previewStringLength}
-              searchMatchPaths={searchMatchPaths}
-              searchAncestorPaths={searchAncestorPaths}
-              activeMatchPath={activeMatchPath}
-              onCopyPath={onCopyPath}
-              onCopyValue={onCopyValue}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -406,6 +402,33 @@ export function JsonTreeCore({
   onCopyValue,
 }: JsonTreeCoreProps) {
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const defaultExpandedPaths = useMemo(
+    () =>
+      new Set(
+        collectDefaultExpandedPaths({
+          value: data,
+          pathSegments: [],
+          depth: 0,
+          defaultExpandedDepth,
+          maxDepth,
+        }),
+      ),
+    [data, defaultExpandedDepth, maxDepth],
+  );
+  const [expandedState, setExpandedState] = useState<ExpansionState>(() => ({
+    data,
+    rootName,
+    defaultExpandedDepth,
+    maxDepth,
+    paths: defaultExpandedPaths,
+  }));
+  const expandedPaths =
+    expandedState.data === data &&
+    expandedState.rootName === rootName &&
+    expandedState.defaultExpandedDepth === defaultExpandedDepth &&
+    expandedState.maxDepth === maxDepth
+      ? expandedState.paths
+      : defaultExpandedPaths;
   const collectedSearchMatches = useMemo(
     () =>
       collectSearchMatches({
@@ -434,6 +457,20 @@ export function JsonTreeCore({
     () => collectAncestorPaths(collectedSearchMatches),
     [collectedSearchMatches],
   );
+  const visibleExpandedPaths = useMemo(
+    () => new Set([...expandedPaths, ...searchAncestorPaths]),
+    [expandedPaths, searchAncestorPaths],
+  );
+  const rows = useMemo(
+    () =>
+      flattenJsonTree({
+        data,
+        rootName,
+        expandedPaths: visibleExpandedPaths,
+        maxDepth,
+      }),
+    [data, rootName, visibleExpandedPaths, maxDepth],
+  );
   const activeMatchPath =
     activeMatchIndex >= 0 && activeMatchIndex < searchMatches.length
       ? searchMatches[activeMatchIndex].path
@@ -443,22 +480,42 @@ export function JsonTreeCore({
     onSearchMatchesChange?.(searchMatches);
   }, [onSearchMatchesChange, searchMatches]);
 
+  function togglePath(path: string) {
+    setExpandedState(() => {
+      const nextPaths = new Set(expandedPaths);
+
+      if (nextPaths.has(path)) {
+        nextPaths.delete(path);
+      } else {
+        nextPaths.add(path);
+      }
+
+      return {
+        data,
+        rootName,
+        defaultExpandedDepth,
+        maxDepth,
+        paths: nextPaths,
+      };
+    });
+  }
+
   return (
     <section className="json-tree-core" aria-label="JSON tree">
-      <TreeNode
-        nodeKey={rootName}
-        value={data}
-        pathSegments={[]}
-        depth={0}
-        defaultExpandedDepth={defaultExpandedDepth}
-        maxDepth={maxDepth}
-        previewStringLength={previewStringLength}
-        searchMatchPaths={searchMatchPaths}
-        searchAncestorPaths={searchAncestorPaths}
-        activeMatchPath={activeMatchPath}
-        onCopyPath={onCopyPath}
-        onCopyValue={onCopyValue}
-      />
+      {rows.map((row) => (
+        <TreeRow
+          key={row.path}
+          row={row}
+          isExpanded={visibleExpandedPaths.has(row.path)}
+          isSearchMatch={searchMatchPaths.has(row.path)}
+          hasSearchMatch={searchAncestorPaths.has(row.path)}
+          isActiveSearchMatch={activeMatchPath === row.path}
+          previewStringLength={previewStringLength}
+          onToggle={togglePath}
+          onCopyPath={onCopyPath}
+          onCopyValue={onCopyValue}
+        />
+      ))}
     </section>
   );
 }

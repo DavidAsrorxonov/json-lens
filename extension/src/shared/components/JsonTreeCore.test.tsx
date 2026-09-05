@@ -87,6 +87,87 @@ describe("JsonTreeCore", () => {
     expect(screen.getByText('"data"')).toBeInTheDocument();
   });
 
+  it("renders visible rows in flattened tree order", () => {
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={4}
+      />,
+    );
+
+    const rowPaths = screen
+      .getAllByTestId(/^json-tree-row:/)
+      .map((row) => row.getAttribute("data-json-path"));
+
+    expect(rowPaths).toEqual([
+      "$",
+      "$.data",
+      "$.data.items",
+      "$.data.items[0]",
+      "$.data.items[0].id",
+      "$.data.items[0].email",
+      "$.data.items[0].active",
+      "$.data.items[0].profile",
+    ]);
+  });
+
+  it("removes descendant rows when a nested container collapses", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={4}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Collapse data at $.data",
+      }),
+    );
+
+    expect(screen.getByTestId("json-tree-row:$.data")).toBeInTheDocument();
+    expect(screen.queryByTestId("json-tree-row:$.data.items")).toBeNull();
+    expect(
+      screen.queryByTestId("json-tree-row:$.data.items[0].id"),
+    ).toBeNull();
+  });
+
+  it("temporarily reveals search matches after manual collapse", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={4}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Collapse data at $.data",
+      }),
+    );
+
+    expect(screen.queryByTestId("json-tree-row:$.data.items[0].email")).toBeNull();
+
+    rerender(
+      <JsonTreeCore
+        data={sampleData}
+        rootName="response"
+        defaultExpandedDepth={4}
+        searchQuery="a@example.com"
+      />,
+    );
+
+    expect(
+      screen.getByTestId("json-tree-row:$.data.items[0].email"),
+    ).toHaveClass("is-search-match");
+  });
+
   it("calls copy path with formatted JSON path", async () => {
     const user = userEvent.setup();
     const onCopyPath = vi.fn();
