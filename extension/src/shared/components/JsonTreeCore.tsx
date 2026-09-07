@@ -1,5 +1,12 @@
 import { ChevronDown, ChevronRight, Copy, Route } from "lucide-react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import clsx from "clsx";
 import type { JsonPathSegment, JsonValue } from "../lib";
 import {
@@ -19,6 +26,9 @@ export type JsonTreeCoreProps = {
   previewStringLength?: number;
   searchQuery?: string;
   activeMatchIndex?: number;
+  virtualizeAbove?: number;
+  virtualizedHeight?: number;
+  virtualizedOverscan?: number;
   onSearchMatchesChange?: (matches: JsonTreeSearchMatch[]) => void;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
@@ -52,6 +62,14 @@ type ExpansionState = {
   maxDepth: number;
   paths: ReadonlySet<string>;
 };
+
+type RenderedVirtualRow = {
+  key: string | number | bigint;
+  index: number;
+  start: number;
+};
+
+const ESTIMATED_ROW_HEIGHT = 26;
 
 function getNodeLabel(nodeKey: string | number | null): string {
   return nodeKey === null ? "root" : String(nodeKey);
@@ -263,6 +281,27 @@ function collectAncestorPaths(
   return ancestorPaths;
 }
 
+function getInitialVirtualRows({
+  count,
+  height,
+  overscan,
+}: {
+  count: number;
+  height: number;
+  overscan: number;
+}): RenderedVirtualRow[] {
+  const initialCount = Math.min(
+    count,
+    Math.ceil(height / ESTIMATED_ROW_HEIGHT) + overscan,
+  );
+
+  return Array.from({ length: initialCount }, (_, index) => ({
+    key: index,
+    index,
+    start: index * ESTIMATED_ROW_HEIGHT,
+  }));
+}
+
 function TreeRow({
   row,
   isExpanded,
@@ -397,10 +436,14 @@ export function JsonTreeCore({
   previewStringLength = PAYLOAD_LIMITS.previewStringLength,
   searchQuery = "",
   activeMatchIndex = -1,
+  virtualizeAbove = PAYLOAD_LIMITS.maxInitialRenderedNodes,
+  virtualizedHeight = 480,
+  virtualizedOverscan = 12,
   onSearchMatchesChange,
   onCopyPath,
   onCopyValue,
 }: JsonTreeCoreProps) {
+  const scrollParentRef = useRef<HTMLDivElement | null>(null);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const defaultExpandedPaths = useMemo(
     () =>
@@ -475,6 +518,30 @@ export function JsonTreeCore({
     activeMatchIndex >= 0 && activeMatchIndex < searchMatches.length
       ? searchMatches[activeMatchIndex].path
       : null;
+  const shouldVirtualize = rows.length > virtualizeAbove;
+  // TanStack Virtual intentionally returns mutable instance methods.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    getItemKey: (index) => rows[index]?.path ?? index,
+    overscan: virtualizedOverscan,
+    initialRect: {
+      width: 0,
+      height: virtualizedHeight,
+    },
+  });
+  const measuredVirtualRows = rowVirtualizer.getVirtualItems();
+  const virtualRows: RenderedVirtualRow[] = shouldVirtualize
+    ? measuredVirtualRows.length > 0
+      ? measuredVirtualRows
+      : getInitialVirtualRows({
+          count: rows.length,
+          height: virtualizedHeight,
+          overscan: virtualizedOverscan,
+        })
+    : [];
 
   useEffect(() => {
     onSearchMatchesChange?.(searchMatches);
@@ -500,22 +567,77 @@ export function JsonTreeCore({
     });
   }
 
+  function renderTreeRow(row: JsonTreeRow) {
+    return (
+      <TreeRow
+        key={row.path}
+        row={row}
+        isExpanded={visibleExpandedPaths.has(row.path)}
+        isSearchMatch={searchMatchPaths.has(row.path)}
+        hasSearchMatch={searchAncestorPaths.has(row.path)}
+        isActiveSearchMatch={activeMatchPath === row.path}
+        previewStringLength={previewStringLength}
+        onToggle={togglePath}
+        onCopyPath={onCopyPath}
+        onCopyValue={onCopyValue}
+      />
+    );
+  }
+
   return (
-    <section className="json-tree-core" aria-label="JSON tree">
-      {rows.map((row) => (
-        <TreeRow
-          key={row.path}
-          row={row}
-          isExpanded={visibleExpandedPaths.has(row.path)}
-          isSearchMatch={searchMatchPaths.has(row.path)}
-          hasSearchMatch={searchAncestorPaths.has(row.path)}
-          isActiveSearchMatch={activeMatchPath === row.path}
-          previewStringLength={previewStringLength}
-          onToggle={togglePath}
-          onCopyPath={onCopyPath}
-          onCopyValue={onCopyValue}
-        />
-      ))}
+    <section
+      className="json-tree-core"
+      aria-label="JSON tree"
+      data-virtualized={shouldVirtualize ? "true" : "false"}
+      data-row-count={rows.length}
+    >
+      <div
+        ref={scrollParentRef}
+        className={clsx(
+          "json-tree-viewport",
+          shouldVirtualize && "is-virtualized",
+        )}
+        data-testid="json-tree-viewport"
+        style={
+          shouldVirtualize
+            ? ({
+                "--json-tree-virtual-height": `${virtualizedHeight}px`,
+              } as CSSProperties)
+            : undefined
+        }
+      >
+        {shouldVirtualize ? (
+          <div
+            className="json-tree-virtual-spacer"
+            data-testid="json-tree-virtual-spacer"
+            style={{ height: rowVirtualizer.getTotalSize() }}
+          >
+            {virtualRows.map((virtualRow) => {
+              const row = rows[virtualRow.index];
+
+              if (!row) {
+                return null;
+              }
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  className="json-tree-virtual-item"
+                  data-index={virtualRow.index}
+                  data-testid={`json-tree-virtual-item:${row.path}`}
+                  style={{
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {renderTreeRow(row)}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          rows.map((row) => renderTreeRow(row))
+        )}
+      </div>
     </section>
   );
 }

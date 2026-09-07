@@ -28,6 +28,13 @@ const sampleData: JsonValue = {
   },
 };
 
+function createLargeArray(size: number): JsonValue {
+  return Array.from({ length: size }, (_, index) => ({
+    id: index,
+    label: `Item ${index}`,
+  }));
+}
+
 describe("JsonTreeCore", () => {
   it("renders the root container", () => {
     render(<JsonTreeCore data={sampleData} rootName="response" />);
@@ -553,5 +560,68 @@ describe("JsonTreeCore", () => {
     );
 
     expect(container.querySelector(".is-active-search-match")).toBeNull();
+  });
+
+  it("uses the non-virtual render path below the virtualization threshold", () => {
+    render(
+      <JsonTreeCore
+        data={{ first: true }}
+        rootName="response"
+        defaultExpandedDepth={2}
+        virtualizeAbove={20}
+      />,
+    );
+
+    expect(screen.getByLabelText("JSON tree")).toHaveAttribute(
+      "data-virtualized",
+      "false",
+    );
+    expect(screen.queryByTestId("json-tree-virtual-spacer")).toBeNull();
+    expect(screen.getByTestId("json-tree-row:$.first")).toBeInTheDocument();
+  });
+
+  it("virtualizes visible rows above the virtualization threshold", () => {
+    render(
+      <JsonTreeCore
+        data={createLargeArray(100)}
+        rootName="response"
+        defaultExpandedDepth={1}
+        virtualizeAbove={20}
+        virtualizedHeight={130}
+        virtualizedOverscan={1}
+      />,
+    );
+
+    const tree = screen.getByLabelText("JSON tree");
+    const renderedRows = screen.getAllByTestId(/^json-tree-row:/);
+
+    expect(tree).toHaveAttribute("data-virtualized", "true");
+    expect(tree).toHaveAttribute("data-row-count", "101");
+    expect(screen.getByTestId("json-tree-virtual-spacer")).toBeInTheDocument();
+    expect(screen.getByTestId("json-tree-row:$")).toBeInTheDocument();
+    expect(renderedRows.length).toBeLessThan(101);
+  });
+
+  it("keeps search match reporting independent from virtualized rendering", async () => {
+    const onSearchMatchesChange = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={createLargeArray(100)}
+        rootName="response"
+        defaultExpandedDepth={1}
+        searchQuery="Item 99"
+        virtualizeAbove={20}
+        virtualizedHeight={130}
+        virtualizedOverscan={1}
+        onSearchMatchesChange={onSearchMatchesChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onSearchMatchesChange).toHaveBeenLastCalledWith([
+        { path: "$[99].label", type: "value" },
+      ]);
+    });
   });
 });

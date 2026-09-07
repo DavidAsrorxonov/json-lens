@@ -26,6 +26,30 @@
   line-height: 1.55;
 }
 
+.json-tree-viewport {
+  min-height: 100%;
+}
+
+.json-tree-viewport.is-virtualized {
+  position: relative;
+  height: var(--json-tree-virtual-height);
+  max-height: 100%;
+  overflow: auto;
+  contain: strict;
+}
+
+.json-tree-virtual-spacer {
+  position: relative;
+  min-width: max-content;
+}
+
+.json-tree-virtual-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
 .json-tree-node {
   min-width: max-content;
 }
