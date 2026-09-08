@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
   isJsonMimeType,
@@ -20,6 +20,12 @@ type JsonDocumentState = {
   contentType: string;
   rawText: string;
   parseResult: ParseResponseResult;
+};
+
+type RawSearchMatch = {
+  index: number;
+  start: number;
+  end: number;
 };
 
 function normalizeActiveIndex(index: number, matchCount: number): number {
@@ -66,6 +72,90 @@ function readJsonDocumentState(): JsonDocumentState | null {
   };
 }
 
+function getRawSearchMatches(rawText: string, searchQuery: string) {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  if (normalizedQuery.length === 0) {
+    return [];
+  }
+
+  const normalizedRawText = rawText.toLowerCase();
+  const matches: RawSearchMatch[] = [];
+  let searchIndex = 0;
+
+  while (searchIndex < normalizedRawText.length) {
+    const matchIndex = normalizedRawText.indexOf(normalizedQuery, searchIndex);
+
+    if (matchIndex === -1) {
+      break;
+    }
+
+    matches.push({
+      index: matches.length,
+      start: matchIndex,
+      end: matchIndex + normalizedQuery.length,
+    });
+    searchIndex = matchIndex + normalizedQuery.length;
+  }
+
+  return matches;
+}
+
+export function RawJsonViewer({
+  rawText,
+  searchQuery,
+  activeMatchIndex,
+}: {
+  rawText: string;
+  searchQuery: string;
+  activeMatchIndex: number;
+}) {
+  const activeMarkRef = useRef<HTMLElement | null>(null);
+  const rawMatches = useMemo(
+    () => getRawSearchMatches(rawText, searchQuery),
+    [rawText, searchQuery],
+  );
+
+  useEffect(() => {
+    activeMarkRef.current?.scrollIntoView({
+      block: "center",
+      inline: "center",
+    });
+  }, [activeMatchIndex, rawMatches]);
+
+  if (rawMatches.length === 0) {
+    return <pre>{rawText}</pre>;
+  }
+
+  const chunks: React.ReactNode[] = [];
+  let cursor = 0;
+
+  for (const match of rawMatches) {
+    const isActive = match.index === activeMatchIndex;
+
+    if (match.start > cursor) {
+      chunks.push(rawText.slice(cursor, match.start));
+    }
+
+    chunks.push(
+      <mark
+        className={isActive ? "is-active" : undefined}
+        key={`${match.start}:${match.end}`}
+        ref={isActive ? activeMarkRef : undefined}
+      >
+        {rawText.slice(match.start, match.end)}
+      </mark>,
+    );
+    cursor = match.end;
+  }
+
+  if (cursor < rawText.length) {
+    chunks.push(rawText.slice(cursor));
+  }
+
+  return <pre>{chunks}</pre>;
+}
+
 export function JsonDocumentViewer({
   url,
   contentType,
@@ -77,11 +167,25 @@ export function JsonDocumentViewer({
   const [matches, setMatches] = useState<JsonTreeSearchMatch[]>([]);
   const [activeMatchIndex, setActiveMatchIndex] = useState<number>(-1);
   const [copyStatus, setCopyStatus] = useState<string>("Copy raw");
+  const rawMatches = useMemo(
+    () => getRawSearchMatches(rawText, searchQuery),
+    [rawText, searchQuery],
+  );
+  const effectiveMatchCount =
+    viewerMode === "raw" ? rawMatches.length : matches.length;
+  const activeRawMatch =
+    viewerMode === "raw" &&
+    activeMatchIndex >= 0 &&
+    activeMatchIndex < rawMatches.length
+      ? rawMatches[activeMatchIndex]
+      : null;
   const activeMatch =
-    activeMatchIndex >= 0 && activeMatchIndex < matches.length
+    viewerMode === "tree" &&
+    activeMatchIndex >= 0 &&
+    activeMatchIndex < matches.length
       ? matches[activeMatchIndex]
       : null;
-  const canSearch = viewerMode === "tree" && parseResult.ok;
+  const canSearch = viewerMode === "raw" || parseResult.ok;
 
   function handleSearchChange(nextQuery: string) {
     setSearchQuery(nextQuery);
@@ -102,13 +206,13 @@ export function JsonDocumentViewer({
 
   function goToPreviousMatch() {
     setActiveMatchIndex((currentIndex) =>
-      normalizeActiveIndex(currentIndex - 1, matches.length),
+      normalizeActiveIndex(currentIndex - 1, effectiveMatchCount),
     );
   }
 
   function goToNextMatch() {
     setActiveMatchIndex((currentIndex) =>
-      normalizeActiveIndex(currentIndex + 1, matches.length),
+      normalizeActiveIndex(currentIndex + 1, effectiveMatchCount),
     );
   }
 
@@ -149,14 +253,14 @@ export function JsonDocumentViewer({
 
         <div className="json-lens-matches" aria-label="Search matches">
           <span>
-            {matches.length === 0 || activeMatchIndex < 0
-              ? `0 / ${matches.length}`
-              : `${activeMatchIndex + 1} / ${matches.length}`}
+            {effectiveMatchCount === 0 || activeMatchIndex < 0
+              ? `0 / ${effectiveMatchCount}`
+              : `${activeMatchIndex + 1} / ${effectiveMatchCount}`}
           </span>
           <button
             type="button"
             aria-label="Previous match"
-            disabled={!canSearch || matches.length === 0}
+            disabled={!canSearch || effectiveMatchCount === 0}
             onClick={goToPreviousMatch}
           >
             ↑
@@ -164,7 +268,7 @@ export function JsonDocumentViewer({
           <button
             type="button"
             aria-label="Next match"
-            disabled={!canSearch || matches.length === 0}
+            disabled={!canSearch || effectiveMatchCount === 0}
             onClick={goToNextMatch}
           >
             ↓
@@ -204,11 +308,20 @@ export function JsonDocumentViewer({
             {activeMatch.type} match at {activeMatch.path}
           </span>
         )}
-        {!activeMatch && <span>No active match</span>}
+        {activeRawMatch && (
+          <span>raw match at character {activeRawMatch.start}</span>
+        )}
+        {!activeMatch && !activeRawMatch && <span>No active match</span>}
       </section>
 
       <section className="json-lens-body">
-        {viewerMode === "raw" && <pre>{rawText}</pre>}
+        {viewerMode === "raw" && (
+          <RawJsonViewer
+            rawText={rawText}
+            searchQuery={searchQuery}
+            activeMatchIndex={activeMatchIndex}
+          />
+        )}
 
         {viewerMode === "tree" && parseResult.ok && (
           <JsonTreeCore
@@ -252,7 +365,7 @@ function injectViewerStyle() {
   html,
     body,
     #${VIEWER_ROOT_ID} {
-      min-height: 100%;
+      height: 100%;
       min-height: 0;
       margin: 0;
       background: #101418;
@@ -264,7 +377,7 @@ function injectViewerStyle() {
 
     .json-lens-document {
       display: grid;
-      min-height: 100vh;
+      height: 100vh;
       min-height: 0;
       grid-template-rows: auto auto minmax(0, 1fr);
       background: #101418;
@@ -414,6 +527,8 @@ function injectViewerStyle() {
     }
 
     .json-lens-body {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
       min-width: 0;
       min-height: 0;
       overflow: hidden;
@@ -421,13 +536,28 @@ function injectViewerStyle() {
 
     .json-lens-body pre {
       box-sizing: border-box;
-  height: 100%;
-  margin: 0;
-  overflow: auto;
-  padding: 12px;
-  color: #d6dde5;
-  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  white-space: pre;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      margin: 0;
+      overflow: auto;
+      padding: 12px;
+      color: #d6dde5;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: pre;
+    }
+
+    .json-lens-body mark {
+      border-radius: 2px;
+      background: #3a2f12;
+      color: inherit;
+      outline: 1px solid #d6a231;
+    }
+
+    .json-lens-body mark.is-active {
+      background: #45370f;
+      outline-color: #f4c95d;
     }
 
     .json-lens-error {
