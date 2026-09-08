@@ -204,9 +204,11 @@ function ParseErrorState({ request }: { request: CapturedJsonRequest }) {
 
 export function Panel() {
   const {
+    captureErrors,
     requests,
     selectedRequest,
     isListening,
+    clearCaptureErrors,
     clearRequests,
     selectRequest,
   } = useNetworkRequests();
@@ -343,6 +345,24 @@ export function Panel() {
         </aside>
 
         <section className="response-panel" aria-label="Response viewer">
+          {captureErrors.length > 0 && (
+            <section className="capture-error-banner" role="status">
+              <AlertTriangle size={14} />
+              <span>
+                {captureErrors.length} response body read{" "}
+                {captureErrors.length === 1 ? "error" : "errors"}. Latest:{" "}
+                {captureErrors[0].message}
+              </span>
+              <button
+                type="button"
+                aria-label="Dismiss capture errors"
+                onClick={clearCaptureErrors}
+              >
+                <X size={13} />
+              </button>
+            </section>
+          )}
+
           {!effectiveSelectedRequest && <EmptyState />}
 
           {effectiveSelectedRequest && (
