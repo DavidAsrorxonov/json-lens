@@ -253,6 +253,7 @@ function injectViewerStyle() {
     body,
     #${VIEWER_ROOT_ID} {
       min-height: 100%;
+      min-height: 0;
       margin: 0;
       background: #101418;
     }
@@ -264,7 +265,8 @@ function injectViewerStyle() {
     .json-lens-document {
       display: grid;
       min-height: 100vh;
-      grid-template-rows: auto auto 1fr;
+      min-height: 0;
+      grid-template-rows: auto auto minmax(0, 1fr);
       background: #101418;
       color: #d6dde5;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -419,13 +421,13 @@ function injectViewerStyle() {
 
     .json-lens-body pre {
       box-sizing: border-box;
-      height: 100%;
-      margin: 0;
-      overflow: auto;
-      padding: 12px;
-      color: #d6dde5;
-      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      white-space: pre;
+  height: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  color: #d6dde5;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre;
     }
 
     .json-lens-error {
