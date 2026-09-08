@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Copy, Route } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Route } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useEffect,
@@ -85,7 +85,9 @@ function getNodeLabel(nodeKey: string | number | null): string {
 }
 
 function formatNodeKey(nodeKey: string | number): string {
-  return typeof nodeKey === "number" ? String(nodeKey) : JSON.stringify(nodeKey);
+  return typeof nodeKey === "number"
+    ? String(nodeKey)
+    : JSON.stringify(nodeKey);
 }
 
 function formatPrimitive(
@@ -326,6 +328,13 @@ function TreeRow({
   onCopyPath,
   onCopyValue,
 }: TreeRowProps) {
+  const [pathCopied, setPathCopied] = useState(false);
+  const [valueCopied, setValueCopied] = useState(false);
+  const pathCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const valueCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
   const rowStyle = {
     "--depth": row.depth,
   } as CSSProperties;
@@ -337,6 +346,30 @@ function TreeRow({
     : null;
   const effectiveExpanded = canToggle && isExpanded;
   const toggleAction = effectiveExpanded ? "Collapse" : "Expand";
+
+  useEffect(() => {
+    return () => {
+      if (pathCopyTimeoutRef.current) clearTimeout(pathCopyTimeoutRef.current);
+      if (valueCopyTimeoutRef.current)
+        clearTimeout(valueCopyTimeoutRef.current);
+    };
+  }, []);
+
+  function handleCopy(type: "path" | "value") {
+    if (type === "path") {
+      setPathCopied(true);
+      if (pathCopyTimeoutRef.current) clearTimeout(pathCopyTimeoutRef.current);
+      pathCopyTimeoutRef.current = setTimeout(() => setPathCopied(false), 2000);
+    } else {
+      setValueCopied(true);
+      if (valueCopyTimeoutRef.current)
+        clearTimeout(valueCopyTimeoutRef.current);
+      valueCopyTimeoutRef.current = setTimeout(
+        () => setValueCopied(false),
+        2000,
+      );
+    }
+  }
 
   return (
     <div
@@ -427,18 +460,24 @@ function TreeRow({
             type="button"
             title={`Copy path ${row.path}`}
             aria-label={`Copy path ${row.path}`}
-            onClick={() => onCopyPath?.(row.path)}
+            onClick={() => {
+              onCopyPath?.(row.path);
+              handleCopy("path");
+            }}
           >
-            <Route size={13} />
+            {pathCopied ? <Check size={13} /> : <Route size={13} />}
           </button>
           <button
             className="json-tree-action"
             type="button"
             title={`Copy value ${row.path}`}
             aria-label={`Copy value ${row.path}`}
-            onClick={() => onCopyValue?.(row.value, row.path)}
+            onClick={() => {
+              onCopyValue?.(row.value, row.path);
+              handleCopy("value");
+            }}
           >
-            <Copy size={13} />
+            {valueCopied ? <Check size={13} /> : <Copy size={13} />}
           </button>
         </div>
       </div>

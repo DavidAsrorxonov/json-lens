@@ -19,7 +19,7 @@ export default defineManifest({
   content_scripts: [
     {
       matches: ["<all_urls>"],
-      js: ["src/content/json-detector.ts"],
+      js: ["src/content/json-detector.tsx"],
       run_at: "document_start",
     },
   ],
