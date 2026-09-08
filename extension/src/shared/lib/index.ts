@@ -6,3 +6,5 @@ export * from "./mime";
 export * from "./parseResponse";
 export * from "./payloadLimits";
 export * from "./viewerFormat";
+export * from "./viewerPreferenceStorage";
+export * from "./viewerPreferences";

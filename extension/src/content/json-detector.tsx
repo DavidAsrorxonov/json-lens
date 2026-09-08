@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { JsonTreeCore, type JsonTreeSearchMatch } from "../shared/components";
+import { useViewerPreferences } from "../shared/hooks";
 import { formatBytes, normalizeActiveIndex } from "../shared/lib";
 import { Braces, Code2, Copy, Search, X } from "lucide-react";
 import {
@@ -91,7 +92,16 @@ export function JsonDocumentViewer({
   const [matches, setMatches] = useState<JsonTreeSearchMatch[]>([]);
   const [activeMatchIndex, setActiveMatchIndex] = useState<number>(-1);
   const [copyStatus, setCopyStatus] = useState<string>("Copy raw");
-  const warnings = parseResult.warnings;
+  const {
+    preferences,
+    errorMessage: preferencesErrorMessage,
+  } = useViewerPreferences();
+  const warningMessages = [
+    ...parseResult.warnings.map((warning) => warning.message),
+    ...(preferencesErrorMessage
+      ? [`Preferences: ${preferencesErrorMessage}`]
+      : []),
+  ];
   const rawMatches = useMemo(
     () => getRawSearchMatches(rawText, searchQuery),
     [rawText, searchQuery],
@@ -100,7 +110,7 @@ export function JsonDocumentViewer({
     viewerMode === "raw" ? rawMatches.length : matches.length;
   const treeViewportHeight = Math.max(
     240,
-    window.innerHeight - (warnings.length > 0 ? 128 : 92),
+    window.innerHeight - (warningMessages.length > 0 ? 128 : 92),
   );
   const activeRawMatch =
     viewerMode === "raw" &&
@@ -253,10 +263,10 @@ export function JsonDocumentViewer({
         {!activeMatch && !activeRawMatch && <span>No active match</span>}
       </section>
 
-      {warnings.length > 0 && (
+      {warningMessages.length > 0 && (
         <section className="json-lens-warnings" role="status">
-          {warnings.map((warning) => (
-            <span key={warning.type}>{warning.message}</span>
+          {warningMessages.map((warningMessage) => (
+            <span key={warningMessage}>{warningMessage}</span>
           ))}
         </section>
       )}
@@ -274,12 +284,12 @@ export function JsonDocumentViewer({
           <JsonTreeCore
             data={parseResult.data}
             rootName="response"
-            defaultExpandedDepth={2}
-            maxRenderedRows={300}
-            previewStringLength={160}
+            defaultExpandedDepth={preferences.defaultExpandedDepth}
+            maxRenderedRows={preferences.maxRenderedRows}
+            previewStringLength={preferences.previewStringLength}
             searchQuery={searchQuery}
             activeMatchIndex={activeMatchIndex}
-            virtualizeAbove={80}
+            virtualizeAbove={preferences.virtualizeAbove}
             virtualizedHeight={treeViewportHeight}
             virtualizedOverscan={10}
             onSearchMatchesChange={handleMatchesChange}

@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { JsonTreeCore, type JsonTreeSearchMatch } from "../shared/components";
+import { useViewerPreferences } from "../shared/hooks";
 import { formatBytes, normalizeActiveIndex } from "../shared/lib";
 import type { CapturedJsonRequest } from "./useNetworkRequests";
 import { useNetworkRequests } from "./useNetworkRequests";
@@ -202,6 +203,10 @@ export function Panel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [matches, setMatches] = useState<JsonTreeSearchMatch[]>([]);
   const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
+  const {
+    preferences,
+    errorMessage: preferencesErrorMessage,
+  } = useViewerPreferences();
   const activeMatch =
     activeMatchIndex >= 0 && activeMatchIndex < matches.length
       ? matches[activeMatchIndex]
@@ -332,6 +337,13 @@ export function Panel() {
         </aside>
 
         <section className="response-panel" aria-label="Response viewer">
+          {preferencesErrorMessage && (
+            <section className="capture-error-banner" role="status">
+              <AlertTriangle size={14} />
+              <span>Preferences: {preferencesErrorMessage}</span>
+            </section>
+          )}
+
           {captureErrors.length > 0 && (
             <section className="capture-error-banner" role="status">
               <AlertTriangle size={14} />
@@ -370,12 +382,12 @@ export function Panel() {
                   <JsonTreeCore
                     data={effectiveSelectedRequest.parseResult.data}
                     rootName="response"
-                    defaultExpandedDepth={2}
-                    maxRenderedRows={300}
-                    previewStringLength={160}
+                    defaultExpandedDepth={preferences.defaultExpandedDepth}
+                    maxRenderedRows={preferences.maxRenderedRows}
+                    previewStringLength={preferences.previewStringLength}
                     searchQuery={searchQuery}
                     activeMatchIndex={activeMatchIndex}
-                    virtualizeAbove={80}
+                    virtualizeAbove={preferences.virtualizeAbove}
                     virtualizedHeight={640}
                     virtualizedOverscan={10}
                     onSearchMatchesChange={handleMatchesChange}
