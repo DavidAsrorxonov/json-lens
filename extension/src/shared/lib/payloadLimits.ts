@@ -4,7 +4,7 @@ export const PAYLOAD_LIMITS = {
   maxInitialRenderedNodes: 5_000,
   maxAutoExpandedNodes: 1_000,
   maxDepth: 200,
-  previewStringLength: 20_000,
+  previewStringLength: 160,
 } as const;
 
 export type PayloadLimitName = keyof typeof PAYLOAD_LIMITS;

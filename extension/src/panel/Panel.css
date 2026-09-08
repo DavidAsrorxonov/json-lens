@@ -1,0 +1,140 @@
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #101418;
+}
+
+.panel-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-rows: auto auto 1fr;
+  background: #101418;
+  color: #d6dde5;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.panel-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, auto) minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #29313a;
+  background: #151a20;
+}
+
+.panel-title {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.panel-title strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.panel-title span,
+.panel-active-match {
+  color: #7d8996;
+  font-size: 12px;
+}
+
+.panel-search {
+  display: flex;
+  min-width: 0;
+  height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid #29313a;
+  border-radius: 4px;
+  background: #101418;
+  color: #7d8996;
+}
+
+.panel-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #d6dde5;
+  font: inherit;
+  font-size: 13px;
+}
+
+.panel-search input::placeholder {
+  color: #7d8996;
+}
+
+.panel-search button,
+.panel-match-controls button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #aab4c0;
+  cursor: pointer;
+}
+
+.panel-search button:hover,
+.panel-match-controls button:hover:not(:disabled) {
+  border-color: #3b4653;
+  color: #d6dde5;
+}
+
+.panel-match-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panel-match-controls span {
+  min-width: 54px;
+  color: #aab4c0;
+  font-size: 12px;
+  text-align: right;
+}
+
+.panel-match-controls button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.panel-active-match {
+  min-height: 28px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #29313a;
+  background: #101418;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
+
+.panel-tree {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 680px) {
+  .panel-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-match-controls {
+    justify-self: start;
+  }
+}

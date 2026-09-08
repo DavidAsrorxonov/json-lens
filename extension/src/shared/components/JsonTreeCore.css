@@ -21,6 +21,8 @@
   --json-tree-warning-border: #6f5a2a;
 
   min-height: 100%;
+  min-width: 0;
+  overflow: hidden;
   background: var(--json-tree-bg);
   color: var(--json-tree-text);
   font-family: var(--json-tree-font);
@@ -30,6 +32,8 @@
 
 .json-tree-viewport {
   min-height: 100%;
+  min-width: 0;
+  overflow: auto;
 }
 
 .json-tree-render-limit {
@@ -75,29 +79,34 @@
   position: relative;
   height: var(--json-tree-virtual-height);
   max-height: 100%;
-  overflow: auto;
   contain: strict;
 }
 
 .json-tree-virtual-spacer {
   position: relative;
-  min-width: max-content;
+  min-width: 100%;
+  width: max-content;
 }
 
 .json-tree-virtual-item {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
+  min-width: 100%;
+  width: max-content;
 }
 
 .json-tree-node {
-  min-width: max-content;
+  min-width: 100%;
+  width: max-content;
 }
 
 .json-tree-row {
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  min-width: 100%;
+  width: max-content;
   min-height: 26px;
   padding-left: calc(var(--depth) * 18px);
   padding-right: 8px;
@@ -207,6 +216,23 @@
 
 .json-tree-value.is-null {
   color: var(--json-tree-null);
+}
+
+.json-tree-value[data-string-truncated="true"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.json-tree-value[data-string-truncated="true"] .json-tree-value-preview {
+  flex: 0 1 auto;
+  max-width: 72ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.json-tree-truncation {
+  flex: 0 0 auto;
 }
 
 .json-tree-actions {

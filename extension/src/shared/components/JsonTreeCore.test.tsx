@@ -298,9 +298,10 @@ describe("JsonTreeCore", () => {
 
     const tokenRow = screen.getByTestId("json-tree-row:$.token");
 
+    expect(tokenRow).toHaveAttribute("data-string-truncated", "true");
     expect(within(tokenRow).getByText('"abcd..."')).toBeInTheDocument();
     expect(
-      within(tokenRow).getByText("6 more characters"),
+      within(tokenRow).getByText("[truncated, 6 more characters hidden]"),
     ).toBeInTheDocument();
 
     await user.click(

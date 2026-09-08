@@ -97,16 +97,20 @@ function formatPrimitive(
   hiddenCharacterCount: number;
 } {
   if (typeof value === "string") {
-    const isTruncated = value.length > previewStringLength;
+    const normalizedPreviewLength = Math.max(
+      1,
+      Math.floor(previewStringLength),
+    );
+    const isTruncated = value.length > normalizedPreviewLength;
     const visibleValue = isTruncated
-      ? `${value.slice(0, previewStringLength)}...`
+      ? `${value.slice(0, normalizedPreviewLength)}...`
       : value;
 
     return {
       text: JSON.stringify(visibleValue),
       isTruncated,
       hiddenCharacterCount: isTruncated
-        ? value.length - previewStringLength
+        ? value.length - normalizedPreviewLength
         : 0,
     };
   }
@@ -353,6 +357,7 @@ function TreeRow({
         data-search-match={isSearchMatch ? "true" : undefined}
         data-has-search-match={hasSearchMatch ? "true" : undefined}
         data-active-search-match={isActiveSearchMatch ? "true" : undefined}
+        data-string-truncated={primitive?.isTruncated ? "true" : undefined}
         style={rowStyle}
       >
         <button
@@ -401,12 +406,16 @@ function TreeRow({
             )}
           </>
         ) : (
-          <span className={clsx("json-tree-value", `is-${row.type}`)}>
-            {primitive?.text}
+          <span
+            className={clsx("json-tree-value", `is-${row.type}`)}
+            data-string-truncated={primitive?.isTruncated ? "true" : undefined}
+          >
+            <span className="json-tree-value-preview">{primitive?.text}</span>
             {primitive?.isTruncated && (
               <span className="json-tree-truncation">
                 {" "}
-                {primitive.hiddenCharacterCount} more characters
+                [truncated, {primitive.hiddenCharacterCount} more characters
+                hidden]
               </span>
             )}
           </span>
