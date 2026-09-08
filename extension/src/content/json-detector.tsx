@@ -1,32 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import {
-  isJsonMimeType,
-  isPlainTextMimeType,
-  looksLikeJsonText,
-  parseResponseBody,
-  type ParseResponseResult,
-} from "../shared/lib";
 import { JsonTreeCore, type JsonTreeSearchMatch } from "../shared/components";
 import { Braces, Code2, Copy, Search, X } from "lucide-react";
+import {
+  getJsonDocumentState,
+  getRawSearchMatches,
+  type JsonDocumentState,
+} from "./jsonDocumentModel";
 
 const VIEWER_ROOT_ID = "json-lens-document-viewer";
 const VIEWER_STYLE_ID = "json-lens-document-viewer-styles";
 
 type ViewerMode = "tree" | "raw";
-
-type JsonDocumentState = {
-  url: string;
-  contentType: string;
-  rawText: string;
-  parseResult: ParseResponseResult;
-};
-
-type RawSearchMatch = {
-  index: number;
-  start: number;
-  end: number;
-};
 
 function normalizeActiveIndex(index: number, matchCount: number): number {
   if (matchCount === 0) {
@@ -48,57 +33,15 @@ function formatBytes(byteLength: number): string {
   return `${(byteLength / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function shouldRenderJsonViewer(contentType: string, rawText: string): boolean {
-  if (isJsonMimeType(contentType)) {
-    return true;
-  }
-
-  return isPlainTextMimeType(contentType) && looksLikeJsonText(rawText);
-}
-
 function readJsonDocumentState(): JsonDocumentState | null {
   const contentType = document.contentType ?? "";
   const rawText = document.body?.textContent ?? "";
 
-  if (!shouldRenderJsonViewer(contentType, rawText)) {
-    return null;
-  }
-
-  return {
+  return getJsonDocumentState({
     url: window.location.href,
     contentType,
     rawText,
-    parseResult: parseResponseBody(rawText),
-  };
-}
-
-function getRawSearchMatches(rawText: string, searchQuery: string) {
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-
-  if (normalizedQuery.length === 0) {
-    return [];
-  }
-
-  const normalizedRawText = rawText.toLowerCase();
-  const matches: RawSearchMatch[] = [];
-  let searchIndex = 0;
-
-  while (searchIndex < normalizedRawText.length) {
-    const matchIndex = normalizedRawText.indexOf(normalizedQuery, searchIndex);
-
-    if (matchIndex === -1) {
-      break;
-    }
-
-    matches.push({
-      index: matches.length,
-      start: matchIndex,
-      end: matchIndex + normalizedQuery.length,
-    });
-    searchIndex = matchIndex + normalizedQuery.length;
-  }
-
-  return matches;
+  });
 }
 
 export function RawJsonViewer({
@@ -354,14 +297,8 @@ export function JsonDocumentViewer({
   );
 }
 
-function injectViewerStyle() {
-  if (document.getElementById(VIEWER_STYLE_ID)) {
-    return;
-  }
-
-  const style = document.createElement("style");
-  style.id = VIEWER_STYLE_ID;
-  style.textContent = `
+function getViewerStyles(): string {
+  return `
   html,
     body,
     #${VIEWER_ROOT_ID} {
@@ -598,6 +535,16 @@ function injectViewerStyle() {
       }
     }
 `;
+}
+
+function injectViewerStyle() {
+  if (document.getElementById(VIEWER_STYLE_ID)) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = VIEWER_STYLE_ID;
+  style.textContent = getViewerStyles();
 
   document.head.append(style);
 }
@@ -627,10 +574,12 @@ function renderJsonViewer() {
   );
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", renderJsonViewer, {
-    once: true,
-  });
-} else {
-  renderJsonViewer();
+if (import.meta.env.MODE !== "test") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", renderJsonViewer, {
+      once: true,
+    });
+  } else {
+    renderJsonViewer();
+  }
 }
