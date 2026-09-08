@@ -624,4 +624,126 @@ describe("JsonTreeCore", () => {
       ]);
     });
   });
+
+  it("renders normally when visible rows are under the render limit", () => {
+    render(
+      <JsonTreeCore
+        data={{ first: true, second: false }}
+        rootName="response"
+        defaultExpandedDepth={1}
+        maxRenderedRows={5}
+      />,
+    );
+
+    const tree = screen.getByLabelText("JSON tree");
+
+    expect(tree).toHaveAttribute("data-render-limited", "false");
+    expect(tree).toHaveAttribute("data-row-count", "3");
+    expect(tree).toHaveAttribute("data-rendered-row-count", "3");
+    expect(screen.queryByTestId("json-tree-render-limit")).toBeNull();
+    expect(screen.getByTestId("json-tree-row:$.second")).toBeInTheDocument();
+  });
+
+  it("limits rendered rows and shows a large tree warning", () => {
+    render(
+      <JsonTreeCore
+        data={createLargeArray(20)}
+        rootName="response"
+        defaultExpandedDepth={1}
+        maxRenderedRows={8}
+        virtualizeAbove={100}
+      />,
+    );
+
+    const tree = screen.getByLabelText("JSON tree");
+    const renderedRows = screen.getAllByTestId(/^json-tree-row:/);
+
+    expect(tree).toHaveAttribute("data-render-limited", "true");
+    expect(tree).toHaveAttribute("data-row-count", "21");
+    expect(tree).toHaveAttribute("data-rendered-row-count", "8");
+    expect(screen.getByTestId("json-tree-render-limit")).toHaveTextContent(
+      "Rendering limited for performance",
+    );
+    expect(screen.getByTestId("json-tree-render-limit")).toHaveTextContent(
+      "Showing 8 of 21 visible rows.",
+    );
+    expect(renderedRows).toHaveLength(8);
+    expect(screen.getByTestId("json-tree-row:$[6]")).toBeInTheDocument();
+    expect(screen.queryByTestId("json-tree-row:$[7]")).toBeNull();
+  });
+
+  it("loads the full tree after the user confirms rendering all rows", async () => {
+    const user = userEvent.setup();
+    const onLoadFullTree = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={createLargeArray(20)}
+        rootName="response"
+        defaultExpandedDepth={1}
+        maxRenderedRows={8}
+        virtualizeAbove={100}
+        onLoadFullTree={onLoadFullTree}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Load full tree",
+      }),
+    );
+
+    const tree = screen.getByLabelText("JSON tree");
+
+    expect(tree).toHaveAttribute("data-render-limited", "false");
+    expect(tree).toHaveAttribute("data-row-count", "21");
+    expect(tree).toHaveAttribute("data-rendered-row-count", "21");
+    expect(screen.queryByTestId("json-tree-render-limit")).toBeNull();
+    expect(screen.getByTestId("json-tree-row:$[19]")).toBeInTheDocument();
+    expect(onLoadFullTree).toHaveBeenCalledWith(21);
+  });
+
+  it("keeps search match reporting independent from render limits", async () => {
+    const onSearchMatchesChange = vi.fn();
+
+    render(
+      <JsonTreeCore
+        data={createLargeArray(20)}
+        rootName="response"
+        defaultExpandedDepth={1}
+        maxRenderedRows={8}
+        searchQuery="Item 19"
+        virtualizeAbove={100}
+        onSearchMatchesChange={onSearchMatchesChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onSearchMatchesChange).toHaveBeenLastCalledWith([
+        { path: "$[19].label", type: "value" },
+      ]);
+    });
+
+    expect(screen.queryByTestId("json-tree-row:$[19].label")).toBeNull();
+    expect(screen.getByTestId("json-tree-render-limit")).toBeInTheDocument();
+  });
+
+  it("normalizes invalid render limits to at least one rendered row", () => {
+    render(
+      <JsonTreeCore
+        data={createLargeArray(3)}
+        rootName="response"
+        defaultExpandedDepth={1}
+        maxRenderedRows={0}
+        virtualizeAbove={100}
+      />,
+    );
+
+    expect(screen.getByLabelText("JSON tree")).toHaveAttribute(
+      "data-rendered-row-count",
+      "1",
+    );
+    expect(screen.getAllByTestId(/^json-tree-row:/)).toHaveLength(1);
+    expect(screen.getByTestId("json-tree-row:$")).toBeInTheDocument();
+  });
 });

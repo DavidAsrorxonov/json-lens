@@ -17,6 +17,8 @@
   --json-tree-search-ancestor-bg: #192636;
   --json-tree-active-search-bg: #45370f;
   --json-tree-active-search-border: #f4c95d;
+  --json-tree-warning-bg: #211c12;
+  --json-tree-warning-border: #6f5a2a;
 
   min-height: 100%;
   background: var(--json-tree-bg);
@@ -28,6 +30,45 @@
 
 .json-tree-viewport {
   min-height: 100%;
+}
+
+.json-tree-render-limit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--json-tree-warning-border);
+  background: var(--json-tree-warning-bg);
+  color: var(--json-tree-text);
+}
+
+.json-tree-render-limit > div {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.json-tree-render-limit span {
+  color: var(--json-tree-muted);
+}
+
+.json-tree-load-full {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--json-tree-warning-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--json-tree-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.json-tree-load-full:hover {
+  border-color: var(--json-tree-active-search-border);
 }
 
 .json-tree-viewport.is-virtualized {

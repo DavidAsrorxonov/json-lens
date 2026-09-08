@@ -22,6 +22,7 @@ export type JsonTreeCoreProps = {
   data: JsonValue;
   rootName?: string;
   defaultExpandedDepth?: number;
+  maxRenderedRows?: number;
   maxDepth?: number;
   previewStringLength?: number;
   searchQuery?: string;
@@ -29,6 +30,7 @@ export type JsonTreeCoreProps = {
   virtualizeAbove?: number;
   virtualizedHeight?: number;
   virtualizedOverscan?: number;
+  onLoadFullTree?: (rowCount: number) => void;
   onSearchMatchesChange?: (matches: JsonTreeSearchMatch[]) => void;
   onCopyPath?: (path: string) => void;
   onCopyValue?: (value: JsonValue, path: string) => void;
@@ -61,6 +63,13 @@ type ExpansionState = {
   defaultExpandedDepth: number;
   maxDepth: number;
   paths: ReadonlySet<string>;
+};
+
+type RenderLimitState = {
+  data: JsonValue;
+  rootName: string;
+  maxRenderedRows: number;
+  isFullTreeLoaded: boolean;
 };
 
 type RenderedVirtualRow = {
@@ -432,6 +441,7 @@ export function JsonTreeCore({
   data,
   rootName = "root",
   defaultExpandedDepth = 1,
+  maxRenderedRows = PAYLOAD_LIMITS.maxInitialRenderedNodes,
   maxDepth = PAYLOAD_LIMITS.maxDepth,
   previewStringLength = PAYLOAD_LIMITS.previewStringLength,
   searchQuery = "",
@@ -439,6 +449,7 @@ export function JsonTreeCore({
   virtualizeAbove = PAYLOAD_LIMITS.maxInitialRenderedNodes,
   virtualizedHeight = 480,
   virtualizedOverscan = 12,
+  onLoadFullTree,
   onSearchMatchesChange,
   onCopyPath,
   onCopyValue,
@@ -514,18 +525,38 @@ export function JsonTreeCore({
       }),
     [data, rootName, visibleExpandedPaths, maxDepth],
   );
+  const normalizedMaxRenderedRows = Math.max(1, maxRenderedRows);
+  const [renderLimitState, setRenderLimitState] = useState<RenderLimitState>(
+    () => ({
+      data,
+      rootName,
+      maxRenderedRows: normalizedMaxRenderedRows,
+      isFullTreeLoaded: false,
+    }),
+  );
+  const isFullTreeLoaded =
+    renderLimitState.data === data &&
+    renderLimitState.rootName === rootName &&
+    renderLimitState.maxRenderedRows === normalizedMaxRenderedRows
+      ? renderLimitState.isFullTreeLoaded
+      : false;
+  const isRenderLimited =
+    rows.length > normalizedMaxRenderedRows && !isFullTreeLoaded;
+  const renderedRows = isRenderLimited
+    ? rows.slice(0, normalizedMaxRenderedRows)
+    : rows;
   const activeMatchPath =
     activeMatchIndex >= 0 && activeMatchIndex < searchMatches.length
       ? searchMatches[activeMatchIndex].path
       : null;
-  const shouldVirtualize = rows.length > virtualizeAbove;
+  const shouldVirtualize = renderedRows.length > virtualizeAbove;
   // TanStack Virtual intentionally returns mutable instance methods.
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: renderedRows.length,
     getScrollElement: () => scrollParentRef.current,
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
-    getItemKey: (index) => rows[index]?.path ?? index,
+    getItemKey: (index) => renderedRows[index]?.path ?? index,
     overscan: virtualizedOverscan,
     initialRect: {
       width: 0,
@@ -537,7 +568,7 @@ export function JsonTreeCore({
     ? measuredVirtualRows.length > 0
       ? measuredVirtualRows
       : getInitialVirtualRows({
-          count: rows.length,
+          count: renderedRows.length,
           height: virtualizedHeight,
           overscan: virtualizedOverscan,
         })
@@ -567,6 +598,16 @@ export function JsonTreeCore({
     });
   }
 
+  function loadFullTree() {
+    setRenderLimitState({
+      data,
+      rootName,
+      maxRenderedRows: normalizedMaxRenderedRows,
+      isFullTreeLoaded: true,
+    });
+    onLoadFullTree?.(rows.length);
+  }
+
   function renderTreeRow(row: JsonTreeRow) {
     return (
       <TreeRow
@@ -590,7 +631,30 @@ export function JsonTreeCore({
       aria-label="JSON tree"
       data-virtualized={shouldVirtualize ? "true" : "false"}
       data-row-count={rows.length}
+      data-rendered-row-count={renderedRows.length}
+      data-render-limited={isRenderLimited ? "true" : "false"}
     >
+      {isRenderLimited && (
+        <div
+          className="json-tree-render-limit"
+          data-testid="json-tree-render-limit"
+          role="status"
+        >
+          <div>
+            <strong>Rendering limited for performance</strong>
+            <span>
+              Showing {renderedRows.length} of {rows.length} visible rows.
+            </span>
+          </div>
+          <button
+            className="json-tree-load-full"
+            type="button"
+            onClick={loadFullTree}
+          >
+            Load full tree
+          </button>
+        </div>
+      )}
       <div
         ref={scrollParentRef}
         className={clsx(
@@ -613,7 +677,7 @@ export function JsonTreeCore({
             style={{ height: rowVirtualizer.getTotalSize() }}
           >
             {virtualRows.map((virtualRow) => {
-              const row = rows[virtualRow.index];
+              const row = renderedRows[virtualRow.index];
 
               if (!row) {
                 return null;
@@ -635,7 +699,7 @@ export function JsonTreeCore({
             })}
           </div>
         ) : (
-          rows.map((row) => renderTreeRow(row))
+          renderedRows.map((row) => renderTreeRow(row))
         )}
       </div>
     </section>
