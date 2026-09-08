@@ -1,51 +1,18 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
+import { useState } from "react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { JsonTreeCore, type JsonTreeSearchMatch } from "../shared/components";
-import type { JsonValue } from "../shared/lib";
+import type { CapturedJsonRequest } from "./useNetworkRequests";
+import { useNetworkRequests } from "./useNetworkRequests";
 import "./Panel.css";
-
-function createVerificationData(): JsonValue {
-  return {
-    meta: {
-      fixture: "JsonTreeCore browser verification",
-      generatedItems: 2_000,
-      targetSearches: ["needle-01999", "group-17", "owner@example.com"],
-    },
-    data: {
-      items: Array.from({ length: 2_000 }, (_, index) => ({
-        id: index,
-        label: `Item ${index}`,
-        group: `group-${index % 25}`,
-        active: index % 3 === 0,
-        owner: {
-          email:
-            index === 1_999
-              ? "owner@example.com"
-              : `owner-${index}@example.com`,
-          team: `Team ${index % 8}`,
-        },
-        tags:
-          index === 1_999
-            ? ["large", "virtualized", "needle-01999"]
-            : ["large", "virtualized"],
-        metrics: {
-          score: Number((index * 1.37).toFixed(2)),
-          retries: index % 5,
-        },
-      })),
-    },
-    emptyStates: {
-      emptyObject: {},
-      emptyArray: [],
-    },
-    longString:
-      "This deliberately long string verifies preview truncation while copy still keeps the complete original value. ".repeat(
-        20,
-      ),
-  };
-}
 
 function normalizeActiveIndex(index: number, matchCount: number): number {
   if (matchCount === 0) {
@@ -55,12 +22,204 @@ function normalizeActiveIndex(index: number, matchCount: number): number {
   return ((index % matchCount) + matchCount) % matchCount;
 }
 
+function formatBytes(byteLength: number): string {
+  if (byteLength < 1024) {
+    return `${byteLength} B`;
+  }
+
+  if (byteLength < 1024 * 1024) {
+    return `${(byteLength / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(byteLength / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${Math.round(durationMs)} ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(2)} s`;
+}
+
+function formatRequestTime(startedDateTime: string): string {
+  const date = new Date(startedDateTime);
+
+  if (Number.isNaN(date.getTime())) {
+    return startedDateTime;
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function getUrlParts(url: string): { host: string; path: string } {
+  try {
+    const parsedUrl = new URL(url);
+    const path = `${parsedUrl.pathname}${parsedUrl.search}`;
+
+    return {
+      host: parsedUrl.host,
+      path: path.length > 0 ? path : "/",
+    };
+  } catch {
+    return {
+      host: "unknown",
+      path: url,
+    };
+  }
+}
+
+function getStatusClass(status: number): string {
+  if (status >= 200 && status < 300) {
+    return "is-success";
+  }
+
+  if (status >= 300 && status < 400) {
+    return "is-redirect";
+  }
+
+  if (status >= 400) {
+    return "is-error";
+  }
+
+  return "is-neutral";
+}
+
+function RequestListItem({
+  request,
+  isSelected,
+  onSelect,
+}: {
+  request: CapturedJsonRequest;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const urlParts = getUrlParts(request.url);
+  const hasIssue =
+    !request.parseResult.ok || request.parseResult.warnings.length > 0;
+
+  return (
+    <button
+      className="request-list-item"
+      type="button"
+      aria-pressed={isSelected}
+      data-selected={isSelected ? "true" : "false"}
+      onClick={onSelect}
+    >
+      <span className="request-list-primary">
+        <span className="request-method">{request.method}</span>
+        <span className="request-path" title={request.url}>
+          {urlParts.path}
+        </span>
+      </span>
+      <span className="request-list-secondary">
+        <span className={`request-status ${getStatusClass(request.status)}`}>
+          {request.status}
+        </span>
+        <span className="request-host">{urlParts.host}</span>
+        {hasIssue && <AlertTriangle size={13} aria-label="Has warning" />}
+      </span>
+    </button>
+  );
+}
+
+function RequestDetails({ request }: { request: CapturedJsonRequest }) {
+  const warnings = request.parseResult.warnings;
+
+  return (
+    <section className="request-details" aria-label="Selected request details">
+      <div>
+        <span>URL</span>
+        <strong title={request.url}>{request.url}</strong>
+      </div>
+      <div>
+        <span>Method</span>
+        <strong>{request.method}</strong>
+      </div>
+      <div>
+        <span>Status</span>
+        <strong>
+          {request.status} {request.statusText}
+        </strong>
+      </div>
+      <div>
+        <span>Type</span>
+        <strong>{request.mimeType || "unknown"}</strong>
+      </div>
+      <div>
+        <span>Size</span>
+        <strong>{formatBytes(request.byteLength)}</strong>
+      </div>
+      <div>
+        <span>Time</span>
+        <strong>{formatDuration(request.durationMs)}</strong>
+      </div>
+      <div>
+        <span>Started</span>
+        <strong>{formatRequestTime(request.startedDateTime)}</strong>
+      </div>
+      {request.contentEncoding && (
+        <div>
+          <span>Encoding</span>
+          <strong>{request.contentEncoding}</strong>
+        </div>
+      )}
+      {warnings.map((warning) => (
+        <div className="request-warning" key={warning.type}>
+          <span>Warning</span>
+          <strong>{warning.message}</strong>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function EmptyState() {
+  return (
+    <section className="panel-empty" aria-label="No captured requests">
+      <strong>No JSON responses captured</strong>
+      <span>Reload the inspected page or trigger an API request.</span>
+    </section>
+  );
+}
+
+function ParseErrorState({ request }: { request: CapturedJsonRequest }) {
+  if (request.parseResult.ok) {
+    return null;
+  }
+
+  return (
+    <section className="panel-error" role="alert">
+      <strong>{request.parseResult.error.message}</strong>
+      <span>
+        {request.parseResult.error.type} - {formatBytes(request.byteLength)}
+      </span>
+    </section>
+  );
+}
+
 export function Panel() {
-  const data = useMemo(() => createVerificationData(), []);
+  const {
+    requests,
+    selectedRequest,
+    isListening,
+    clearRequests,
+    selectRequest,
+  } = useNetworkRequests();
   const [searchQuery, setSearchQuery] = useState("");
   const [matches, setMatches] = useState<JsonTreeSearchMatch[]>([]);
   const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
-  const activeMatch = activeMatchIndex >= 0 ? matches[activeMatchIndex] : null;
+  const activeMatch =
+    activeMatchIndex >= 0 && activeMatchIndex < matches.length
+      ? matches[activeMatchIndex]
+      : null;
+  const effectiveSelectedRequest = selectedRequest ?? requests[0] ?? null;
+  const effectiveSelectedRequestId =
+    selectedRequest?.id ?? requests[0]?.id ?? null;
 
   function handleSearchChange(nextQuery: string) {
     setSearchQuery(nextQuery);
@@ -91,12 +250,26 @@ export function Panel() {
     setActiveMatchIndex(-1);
   }
 
+  function handleClearRequests() {
+    clearRequests();
+    clearSearch();
+    setMatches([]);
+  }
+
+  function handleSelectRequest(request: CapturedJsonRequest) {
+    selectRequest(request.id);
+    setMatches([]);
+    setActiveMatchIndex(
+      request.parseResult.ok && searchQuery.trim().length > 0 ? 0 : -1,
+    );
+  }
+
   return (
     <main className="panel-shell">
       <header className="panel-toolbar">
         <div className="panel-title">
           <strong>JSON Lens</strong>
-          <span>Verification fixture</span>
+          <span>{isListening ? "Listening" : "Paused"}</span>
         </div>
 
         <label className="panel-search">
@@ -104,8 +277,9 @@ export function Panel() {
           <input
             type="search"
             value={searchQuery}
-            placeholder="Search keys, values, or paths"
+            placeholder="Search selected response"
             onChange={(event) => handleSearchChange(event.target.value)}
+            disabled={!effectiveSelectedRequest?.parseResult.ok}
           />
           {searchQuery.length > 0 && (
             <button type="button" aria-label="Clear search" onClick={clearSearch}>
@@ -137,32 +311,79 @@ export function Panel() {
             <ChevronDown size={15} />
           </button>
         </div>
+
+        <button
+          className="panel-clear"
+          type="button"
+          aria-label="Clear captured requests"
+          title="Clear captured requests"
+          onClick={handleClearRequests}
+          disabled={requests.length === 0}
+        >
+          <Trash2 size={15} />
+        </button>
       </header>
 
-      <div className="panel-active-match" data-testid="panel-active-match">
-        {activeMatch
-          ? `${activeMatch.type} match at ${activeMatch.path}`
-          : "No active match"}
-      </div>
+      <section className="panel-content">
+        <aside className="request-sidebar" aria-label="Captured JSON requests">
+          <div className="request-sidebar-header">
+            <strong>Requests</strong>
+            <span>{requests.length}</span>
+          </div>
+          <div className="request-list">
+            {requests.map((request) => (
+              <RequestListItem
+                key={request.id}
+                request={request}
+                isSelected={request.id === effectiveSelectedRequestId}
+                onSelect={() => handleSelectRequest(request)}
+              />
+            ))}
+          </div>
+        </aside>
 
-      <section className="panel-tree">
-        <JsonTreeCore
-          data={data}
-          rootName="response"
-          defaultExpandedDepth={2}
-          maxRenderedRows={300}
-          previewStringLength={80}
-          searchQuery={searchQuery}
-          activeMatchIndex={activeMatchIndex}
-          virtualizeAbove={80}
-          virtualizedHeight={640}
-          virtualizedOverscan={10}
-          onSearchMatchesChange={handleMatchesChange}
-          onCopyPath={(path) => navigator.clipboard.writeText(path)}
-          onCopyValue={(value) =>
-            navigator.clipboard.writeText(JSON.stringify(value, null, 2))
-          }
-        />
+        <section className="response-panel" aria-label="Response viewer">
+          {!effectiveSelectedRequest && <EmptyState />}
+
+          {effectiveSelectedRequest && (
+            <>
+              <RequestDetails request={effectiveSelectedRequest} />
+
+              <div
+                className="panel-active-match"
+                data-testid="panel-active-match"
+              >
+                {activeMatch
+                  ? `${activeMatch.type} match at ${activeMatch.path}`
+                  : "No active match"}
+              </div>
+
+              {effectiveSelectedRequest.parseResult.ok ? (
+                <section className="panel-tree">
+                  <JsonTreeCore
+                    data={effectiveSelectedRequest.parseResult.data}
+                    rootName="response"
+                    defaultExpandedDepth={2}
+                    maxRenderedRows={300}
+                    previewStringLength={160}
+                    searchQuery={searchQuery}
+                    activeMatchIndex={activeMatchIndex}
+                    virtualizeAbove={80}
+                    virtualizedHeight={640}
+                    virtualizedOverscan={10}
+                    onSearchMatchesChange={handleMatchesChange}
+                    onCopyPath={(path) => navigator.clipboard.writeText(path)}
+                    onCopyValue={(value) =>
+                      navigator.clipboard.writeText(JSON.stringify(value, null, 2))
+                    }
+                  />
+                </section>
+              ) : (
+                <ParseErrorState request={effectiveSelectedRequest} />
+              )}
+            </>
+          )}
+        </section>
       </section>
     </main>
   );
