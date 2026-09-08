@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -311,6 +312,54 @@ describe("JsonTreeCore", () => {
     );
 
     expect(onCopyValue).toHaveBeenCalledWith(longValue, "$.token");
+  });
+
+  it("shows value copy success feedback after the copy callback resolves", async () => {
+    const onCopyValue = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <JsonTreeCore
+        data={{ token: "abc" }}
+        rootName="response"
+        defaultExpandedDepth={2}
+        onCopyValue={onCopyValue}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Copy value $.token",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Value copied")).toBeInTheDocument();
+    });
+    expect(onCopyValue).toHaveBeenCalledWith("abc", "$.token");
+  });
+
+  it("shows copy failure feedback when the copy callback rejects", async () => {
+    const onCopyPath = vi.fn().mockRejectedValue(new Error("denied"));
+
+    render(
+      <JsonTreeCore
+        data={{ token: "abc" }}
+        rootName="response"
+        defaultExpandedDepth={2}
+        onCopyPath={onCopyPath}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Copy path $.token",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Copy failed")).toBeInTheDocument();
+    });
+    expect(onCopyPath).toHaveBeenCalledWith("$.token");
   });
 
   it("stops rendering children at the max depth", () => {

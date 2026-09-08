@@ -242,6 +242,22 @@
   opacity: 0;
 }
 
+.json-tree-copy-feedback {
+  margin-left: 8px;
+  color: var(--json-tree-muted);
+  font-size: 12px;
+}
+
+.json-tree-copy-feedback[data-copy-status="success"],
+.json-tree-action[data-copy-status="success"] {
+  color: var(--json-tree-string);
+}
+
+.json-tree-copy-feedback[data-copy-status="error"],
+.json-tree-action[data-copy-status="error"] {
+  color: var(--json-tree-null);
+}
+
 .json-tree-row:hover .json-tree-actions,
 .json-tree-row:focus-within .json-tree-actions {
   opacity: 1;

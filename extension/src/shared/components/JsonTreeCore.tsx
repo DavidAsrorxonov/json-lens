@@ -32,8 +32,8 @@ export type JsonTreeCoreProps = {
   virtualizedOverscan?: number;
   onLoadFullTree?: (rowCount: number) => void;
   onSearchMatchesChange?: (matches: JsonTreeSearchMatch[]) => void;
-  onCopyPath?: (path: string) => void;
-  onCopyValue?: (value: JsonValue, path: string) => void;
+  onCopyPath?: (path: string) => void | Promise<void>;
+  onCopyValue?: (value: JsonValue, path: string) => void | Promise<void>;
 };
 
 export type JsonTreeSearchMatch = {
@@ -53,8 +53,8 @@ type TreeRowProps = {
   isActiveSearchMatch: boolean;
   previewStringLength: number;
   onToggle: (path: string) => void;
-  onCopyPath?: (path: string) => void;
-  onCopyValue?: (value: JsonValue, path: string) => void;
+  onCopyPath?: (path: string) => void | Promise<void>;
+  onCopyValue?: (value: JsonValue, path: string) => void | Promise<void>;
 };
 
 type ExpansionState = {
@@ -78,7 +78,13 @@ type RenderedVirtualRow = {
   start: number;
 };
 
+type CopyFeedback = {
+  type: "path" | "value";
+  status: "success" | "error";
+} | null;
+
 const ESTIMATED_ROW_HEIGHT = 26;
+const COPY_FEEDBACK_DURATION_MS = 1800;
 
 function getNodeLabel(nodeKey: string | number | null): string {
   return nodeKey === null ? "root" : String(nodeKey);
@@ -317,6 +323,18 @@ function getInitialVirtualRows({
   }));
 }
 
+function getCopyFeedbackLabel(copyFeedback: CopyFeedback): string | null {
+  if (!copyFeedback) {
+    return null;
+  }
+
+  if (copyFeedback.status === "error") {
+    return "Copy failed";
+  }
+
+  return copyFeedback.type === "path" ? "Path copied" : "Value copied";
+}
+
 function TreeRow({
   row,
   isExpanded,
@@ -328,12 +346,9 @@ function TreeRow({
   onCopyPath,
   onCopyValue,
 }: TreeRowProps) {
-  const [pathCopied, setPathCopied] = useState(false);
-  const [valueCopied, setValueCopied] = useState(false);
-  const pathCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const valueCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
 
   const rowStyle = {
     "--depth": row.depth,
@@ -346,29 +361,66 @@ function TreeRow({
     : null;
   const effectiveExpanded = canToggle && isExpanded;
   const toggleAction = effectiveExpanded ? "Collapse" : "Expand";
+  const copyFeedbackLabel = getCopyFeedbackLabel(copyFeedback);
 
   useEffect(() => {
     return () => {
-      if (pathCopyTimeoutRef.current) clearTimeout(pathCopyTimeoutRef.current);
-      if (valueCopyTimeoutRef.current)
-        clearTimeout(valueCopyTimeoutRef.current);
+      isMountedRef.current = false;
+
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
     };
   }, []);
 
-  function handleCopy(type: "path" | "value") {
-    if (type === "path") {
-      setPathCopied(true);
-      if (pathCopyTimeoutRef.current) clearTimeout(pathCopyTimeoutRef.current);
-      pathCopyTimeoutRef.current = setTimeout(() => setPathCopied(false), 2000);
-    } else {
-      setValueCopied(true);
-      if (valueCopyTimeoutRef.current)
-        clearTimeout(valueCopyTimeoutRef.current);
-      valueCopyTimeoutRef.current = setTimeout(
-        () => setValueCopied(false),
-        2000,
-      );
+  function scheduleCopyFeedbackReset() {
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
     }
+
+    copyTimeoutRef.current = setTimeout(() => {
+      setCopyFeedback(null);
+    }, COPY_FEEDBACK_DURATION_MS);
+  }
+
+  async function handleCopyPath() {
+    try {
+      await onCopyPath?.(row.path);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setCopyFeedback({ type: "path", status: "success" });
+    } catch {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setCopyFeedback({ type: "path", status: "error" });
+    }
+
+    scheduleCopyFeedbackReset();
+  }
+
+  async function handleCopyValue() {
+    try {
+      await onCopyValue?.(row.value, row.path);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setCopyFeedback({ type: "value", status: "success" });
+    } catch {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setCopyFeedback({ type: "value", status: "error" });
+    }
+
+    scheduleCopyFeedbackReset();
   }
 
   return (
@@ -458,28 +510,63 @@ function TreeRow({
           <button
             className="json-tree-action"
             type="button"
-            title={`Copy path ${row.path}`}
-            aria-label={`Copy path ${row.path}`}
-            onClick={() => {
-              onCopyPath?.(row.path);
-              handleCopy("path");
-            }}
+            title={
+              copyFeedback?.type === "path"
+                ? copyFeedbackLabel ?? ""
+                : `Copy path ${row.path}`
+            }
+            aria-label={
+              copyFeedback?.type === "path"
+                ? copyFeedbackLabel ?? `Copy path ${row.path}`
+                : `Copy path ${row.path}`
+            }
+            data-copy-status={
+              copyFeedback?.type === "path" ? copyFeedback.status : undefined
+            }
+            onClick={handleCopyPath}
           >
-            {pathCopied ? <Check size={13} /> : <Route size={13} />}
+            {copyFeedback?.type === "path" &&
+            copyFeedback.status === "success" ? (
+              <Check size={13} />
+            ) : (
+              <Route size={13} />
+            )}
           </button>
           <button
             className="json-tree-action"
             type="button"
-            title={`Copy value ${row.path}`}
-            aria-label={`Copy value ${row.path}`}
-            onClick={() => {
-              onCopyValue?.(row.value, row.path);
-              handleCopy("value");
-            }}
+            title={
+              copyFeedback?.type === "value"
+                ? copyFeedbackLabel ?? ""
+                : `Copy value ${row.path}`
+            }
+            aria-label={
+              copyFeedback?.type === "value"
+                ? copyFeedbackLabel ?? `Copy value ${row.path}`
+                : `Copy value ${row.path}`
+            }
+            data-copy-status={
+              copyFeedback?.type === "value" ? copyFeedback.status : undefined
+            }
+            onClick={handleCopyValue}
           >
-            {valueCopied ? <Check size={13} /> : <Copy size={13} />}
+            {copyFeedback?.type === "value" &&
+            copyFeedback.status === "success" ? (
+              <Check size={13} />
+            ) : (
+              <Copy size={13} />
+            )}
           </button>
         </div>
+        {copyFeedbackLabel && (
+          <span
+            className="json-tree-copy-feedback"
+            data-copy-status={copyFeedback?.status}
+            role="status"
+          >
+            {copyFeedbackLabel}
+          </span>
+        )}
       </div>
     </div>
   );

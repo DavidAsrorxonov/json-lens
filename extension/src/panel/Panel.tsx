@@ -10,29 +10,10 @@ import {
   X,
 } from "lucide-react";
 import { JsonTreeCore, type JsonTreeSearchMatch } from "../shared/components";
+import { formatBytes, normalizeActiveIndex } from "../shared/lib";
 import type { CapturedJsonRequest } from "./useNetworkRequests";
 import { useNetworkRequests } from "./useNetworkRequests";
 import "./Panel.css";
-
-function normalizeActiveIndex(index: number, matchCount: number): number {
-  if (matchCount === 0) {
-    return -1;
-  }
-
-  return ((index % matchCount) + matchCount) % matchCount;
-}
-
-function formatBytes(byteLength: number): string {
-  if (byteLength < 1024) {
-    return `${byteLength} B`;
-  }
-
-  if (byteLength < 1024 * 1024) {
-    return `${(byteLength / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(byteLength / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function formatDuration(durationMs: number): string {
   if (durationMs < 1000) {
@@ -198,6 +179,12 @@ function ParseErrorState({ request }: { request: CapturedJsonRequest }) {
       <span>
         {request.parseResult.error.type} - {formatBytes(request.byteLength)}
       </span>
+      {request.parseResult.error.type === "payload-too-large" && (
+        <span>
+          Automatic parsing limit is{" "}
+          {formatBytes(request.parseResult.error.maxAutoParseBytes)}.
+        </span>
+      )}
     </section>
   );
 }

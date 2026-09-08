@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { JsonTreeCore, type JsonTreeSearchMatch } from "../shared/components";
+import { formatBytes, normalizeActiveIndex } from "../shared/lib";
 import { Braces, Code2, Copy, Search, X } from "lucide-react";
 import {
   getJsonDocumentState,
@@ -12,26 +13,6 @@ const VIEWER_ROOT_ID = "json-lens-document-viewer";
 const VIEWER_STYLE_ID = "json-lens-document-viewer-styles";
 
 type ViewerMode = "tree" | "raw";
-
-function normalizeActiveIndex(index: number, matchCount: number): number {
-  if (matchCount === 0) {
-    return -1;
-  }
-
-  return ((index % matchCount) + matchCount) % matchCount;
-}
-
-function formatBytes(byteLength: number): string {
-  if (byteLength < 1024) {
-    return `${byteLength} B`;
-  }
-
-  if (byteLength < 1024 * 1024) {
-    return `${(byteLength / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(byteLength / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function readJsonDocumentState(): JsonDocumentState | null {
   const contentType = document.contentType ?? "";
@@ -110,12 +91,17 @@ export function JsonDocumentViewer({
   const [matches, setMatches] = useState<JsonTreeSearchMatch[]>([]);
   const [activeMatchIndex, setActiveMatchIndex] = useState<number>(-1);
   const [copyStatus, setCopyStatus] = useState<string>("Copy raw");
+  const warnings = parseResult.warnings;
   const rawMatches = useMemo(
     () => getRawSearchMatches(rawText, searchQuery),
     [rawText, searchQuery],
   );
   const effectiveMatchCount =
     viewerMode === "raw" ? rawMatches.length : matches.length;
+  const treeViewportHeight = Math.max(
+    240,
+    window.innerHeight - (warnings.length > 0 ? 128 : 92),
+  );
   const activeRawMatch =
     viewerMode === "raw" &&
     activeMatchIndex >= 0 &&
@@ -165,6 +151,16 @@ export function JsonDocumentViewer({
       .then(() => setCopyStatus("Copied"))
       .catch(() => setCopyStatus("Copy failed"));
   }
+
+  useEffect(() => {
+    if (copyStatus === "Copy raw") {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => setCopyStatus("Copy raw"), 1800);
+
+    return () => clearTimeout(timeoutId);
+  }, [copyStatus]);
 
   return (
     <main className="json-lens-document">
@@ -257,6 +253,14 @@ export function JsonDocumentViewer({
         {!activeMatch && !activeRawMatch && <span>No active match</span>}
       </section>
 
+      {warnings.length > 0 && (
+        <section className="json-lens-warnings" role="status">
+          {warnings.map((warning) => (
+            <span key={warning.type}>{warning.message}</span>
+          ))}
+        </section>
+      )}
+
       <section className="json-lens-body">
         {viewerMode === "raw" && (
           <RawJsonViewer
@@ -276,7 +280,7 @@ export function JsonDocumentViewer({
             searchQuery={searchQuery}
             activeMatchIndex={activeMatchIndex}
             virtualizeAbove={80}
-            virtualizedHeight={window.innerHeight - 92}
+            virtualizedHeight={treeViewportHeight}
             virtualizedOverscan={10}
             onSearchMatchesChange={handleMatchesChange}
             onCopyPath={(path) => navigator.clipboard.writeText(path)}
@@ -289,7 +293,15 @@ export function JsonDocumentViewer({
         {viewerMode === "tree" && !parseResult.ok && (
           <section className="json-lens-error" role="alert">
             <strong>{parseResult.error.message}</strong>
-            <span>{parseResult.error.type}</span>
+            <span>
+              {parseResult.error.type} - {formatBytes(parseResult.byteLength)}
+            </span>
+            {parseResult.error.type === "payload-too-large" && (
+              <span>
+                Automatic parsing limit is{" "}
+                {formatBytes(parseResult.error.maxAutoParseBytes)}.
+              </span>
+            )}
           </section>
         )}
       </section>
@@ -316,7 +328,7 @@ function getViewerStyles(): string {
       display: grid;
       height: 100vh;
       min-height: 0;
-      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
       background: #101418;
       color: #d6dde5;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -457,6 +469,23 @@ function getViewerStyles(): string {
     }
 
     .json-lens-meta span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .json-lens-warnings {
+      display: grid;
+      gap: 4px;
+      padding: 7px 10px;
+      border-bottom: 1px solid #6f5a2a;
+      background: #211c12;
+      color: #f4c95d;
+      font-size: 12px;
+    }
+
+    .json-lens-warnings span {
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
