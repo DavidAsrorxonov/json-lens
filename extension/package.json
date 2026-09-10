@@ -1,7 +1,8 @@
 {
-  "name": "extension",
+  "name": "json-lens-extension",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Chrome extension for inspecting JSON documents and JSON network responses.",
   "type": "module",
   "scripts": {
     "dev": "vite",

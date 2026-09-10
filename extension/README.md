@@ -1,75 +1,51 @@
-# React + TypeScript + Vite
+# JSON Lens Extension
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+JSON Lens is a Chrome MV3 extension for inspecting JSON in two places:
 
-Currently, two official plugins are available:
+- Direct JSON documents, including correctly labeled JSON and text responses
+  that contain JSON.
+- JSON network responses captured from a DevTools panel.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The extension renders parsed responses with a searchable tree viewer, raw view,
+copy actions, parser warnings, large-payload limits, virtualized rendering, and
+persisted viewer preferences.
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Install dependencies from this directory:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+Run the main checks:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm run lint
+npm run build
+npm run test
+npm run check:shared
 ```
+
+Build output is written to `dist`. Load that folder through
+`chrome://extensions` with Developer mode enabled.
+
+## Extension Surfaces
+
+- `src/content/json-detector.tsx` detects and replaces direct JSON documents.
+- `src/devtools/devtools.ts` registers the JSON Lens DevTools panel.
+- `src/panel/Panel.tsx` displays captured JSON network responses.
+- `src/popup/Popup.tsx` edits persisted viewer preferences.
+- `src/shared` contains parsing, JSON tree modeling, formatting, storage, and
+  shared React viewer components.
+
+## Permissions
+
+- `storage` stores viewer preferences in `chrome.storage.local`.
+- `<all_urls>` is needed so the content script can detect JSON documents across
+  sites and so DevTools capture behavior works consistently during manual QA.
+
+## Release Notes
+
+Before a release candidate, run the command checks above and complete
+`QA_CHECKLIST.md` against a freshly loaded `dist` folder in Chrome.
