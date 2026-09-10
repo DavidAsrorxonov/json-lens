@@ -5,6 +5,12 @@ export default defineManifest({
   name: "JSON Lens",
   description: "Inspect JSON documents and JSON network responses in Chrome.",
   version: "0.1.0",
+  icons: {
+    "16": "icons/json-lens-16x16.png",
+    "32": "icons/json-lens-32x32.png",
+    "48": "icons/json-lens-48x48.png",
+    "128": "icons/json-lens-128x128.png",
+  },
   permissions: ["storage"],
   host_permissions: ["<all_urls>"],
   action: {
