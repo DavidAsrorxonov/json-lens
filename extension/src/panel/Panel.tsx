@@ -266,9 +266,11 @@ export function Panel() {
           <span>{isListening ? "Listening" : "Paused"}</span>
         </div>
 
-        <label className="panel-search">
+        <label className="panel-search" htmlFor="json-lens-panel-search">
           <Search size={15} aria-hidden="true" />
           <input
+            id="json-lens-panel-search"
+            name="json-lens-panel-search"
             type="search"
             value={searchQuery}
             placeholder="Search selected response"

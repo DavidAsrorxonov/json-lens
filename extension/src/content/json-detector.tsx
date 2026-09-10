@@ -183,6 +183,8 @@ export function JsonDocumentViewer({
         <label htmlFor="json-lens-search" className="json-lens-search">
           <Search size={15} aria-hidden="true" />
           <input
+            id="json-lens-search"
+            name="json-lens-search"
             type="search"
             value={searchQuery}
             placeholder="Search JSON"

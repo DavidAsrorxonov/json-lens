@@ -96,9 +96,15 @@ export function Popup() {
 
       <section className="popup-fields" aria-label="Viewer preferences">
         {PREFERENCE_FIELDS.map((field) => (
-          <label className="popup-field" key={field.key}>
+          <label
+            className="popup-field"
+            htmlFor={`json-lens-${field.key}`}
+            key={field.key}
+          >
             <span>{field.label}</span>
             <input
+              id={`json-lens-${field.key}`}
+              name={field.key}
               type="number"
               value={preferences[field.key]}
               min={field.min}
